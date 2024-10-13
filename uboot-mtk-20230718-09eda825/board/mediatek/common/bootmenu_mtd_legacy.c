@@ -231,6 +231,10 @@ static const struct bootmenu_entry mtd_bootmenu_entries[] = {
 		.desc = "Load image",
 		.cmd = "mtkload"
 	},
+	{
+		.desc = "Reboot",
+		.cmd = "reset"
+	},
 #ifdef CONFIG_MTK_WEB_FAILSAFE
 	{
 		.desc = "Start Web failsafe",

@@ -11,7 +11,7 @@
 #include <linux/bitfield.h>
 #include <linux/delay.h>
 #include <phy.h>
-#include <linux/netdevice.h>
+//#include <linux/netdevice.h>
 
 #define PHY_MIISTAT		0x18	/* MII state */
 #define PHY_LED			0x1B	/* LEDs */
@@ -103,44 +103,6 @@ struct gpy_priv {
 	u8 fw_minor;
 };
 
-static inline void linkmode_set_bit(int nr, int addr)
-{
-	__set_bit(nr, addr);
-}
-
-static inline void linkmode_clear_bit(int nr, int addr)
-{
-	__clear_bit(nr, addr);
-}
-
-static inline void linkmode_mod_bit(int nr, int addr,
-				    int set)
-{
-	if (set)
-		linkmode_set_bit(nr, addr);
-	else
-		linkmode_clear_bit(nr, addr);
-}
-
-/**
- * mii_stat1000_mod_linkmode_lpa_t
- * @advertising: target the linkmode advertisement settings
- * @adv: value of the MII_STAT1000 register
- *
- * A small helper function that translates MII_STAT1000 bits, when in
- * 1000Base-T mode, to linkmode advertisement settings. Other bits in
- * advertising are not changes.
- */
-static inline void mii_stat1000_mod_linkmode_lpa_t(u32 advertising,
-						   u32 lpa)
-{
-	linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Half_BIT,
-			 advertising, lpa & LPA_1000HALF);
-
-	linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
-			 advertising, lpa & LPA_1000FULL);
-}
-
 static int gpy211_led_write(struct phy_device *phydev)
 {
 	u32 led_regs[MAXLINEAR_MAX_LED_INDEX] = {0};
@@ -155,7 +117,7 @@ static int gpy211_led_write(struct phy_device *phydev)
 		if (phyid1 == DEFAULT_INTEL_GPY211_PHYID1_VALUE)
 			break;
 
-		msleep(RETRY_INTERVAL);
+		/* msleep(RETRY_INTERVAL); */
 		i--;
 	}
 	if (!i) {
@@ -194,14 +156,12 @@ static int gpy211_phy_config(struct phy_device *phydev)
 
 	genphy_restart_aneg(phydev);
 
-	phy_reset(phydev);
-
 	return 0;
 }
 
 static int gpy211_probe(struct phy_device *phydev)
 {
-	int sgmii_reg = phy_read_mmd(phydev, MDIO_MMD_VEND1, 8);
+	//int sgmii_reg = phy_read_mmd(phydev, MDIO_MMD_VEND1, 8);
 	struct gpy_priv *priv;
 	int fw_version;
 	int buf = 0;

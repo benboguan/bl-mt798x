@@ -103,6 +103,44 @@ struct gpy_priv {
 	u8 fw_minor;
 };
 
+static inline void linkmode_set_bit(int nr, int addr)
+{
+	__set_bit(nr, addr);
+}
+
+static inline void linkmode_clear_bit(int nr, int addr)
+{
+	__clear_bit(nr, addr);
+}
+
+static inline void linkmode_mod_bit(int nr, int addr,
+				    int set)
+{
+	if (set)
+		linkmode_set_bit(nr, addr);
+	else
+		linkmode_clear_bit(nr, addr);
+}
+
+/**
+ * mii_stat1000_mod_linkmode_lpa_t
+ * @advertising: target the linkmode advertisement settings
+ * @adv: value of the MII_STAT1000 register
+ *
+ * A small helper function that translates MII_STAT1000 bits, when in
+ * 1000Base-T mode, to linkmode advertisement settings. Other bits in
+ * advertising are not changes.
+ */
+static inline void mii_stat1000_mod_linkmode_lpa_t(u32 advertising,
+						   u32 lpa)
+{
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Half_BIT,
+			 advertising, lpa & LPA_1000HALF);
+
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+			 advertising, lpa & LPA_1000FULL);
+}
+
 static int gpy211_led_write(struct phy_device *phydev)
 {
 	u32 led_regs[MAXLINEAR_MAX_LED_INDEX] = {0};
@@ -155,6 +193,8 @@ static int gpy211_phy_config(struct phy_device *phydev)
 	phy_reset(phydev);
 
 	genphy_restart_aneg(phydev);
+
+	phy_reset(phydev);
 
 	return 0;
 }

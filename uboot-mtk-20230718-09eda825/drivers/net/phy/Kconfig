@@ -389,6 +389,11 @@ endif #PHYLIB
 config FSL_MEMAC
 	bool "NXP mEMAC PHY support"
 
+config GPY211_PHY
+	tristate "GPY211 PHY"
+	help
+	  Supports the Intel GPY211 PHY with rate adaption.
+
 config SYS_MEMAC_LITTLE_ENDIAN
 	bool "mEMAC is access in little endian mode"
 	depends on FSL_MEMAC || FSL_LS_MDIO

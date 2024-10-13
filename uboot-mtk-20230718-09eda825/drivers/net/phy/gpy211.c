@@ -11,7 +11,6 @@
 #include <linux/bitfield.h>
 #include <linux/delay.h>
 #include <phy.h>
-//#include <linux/netdevice.h>
 
 #define PHY_MIISTAT		0x18	/* MII state */
 #define PHY_LED			0x1B	/* LEDs */
@@ -117,7 +116,7 @@ static int gpy211_led_write(struct phy_device *phydev)
 		if (phyid1 == DEFAULT_INTEL_GPY211_PHYID1_VALUE)
 			break;
 
-		/* msleep(RETRY_INTERVAL); */
+		mdelay(RETRY_INTERVAL);
 		i--;
 	}
 	if (!i) {
@@ -165,6 +164,11 @@ static int gpy211_probe(struct phy_device *phydev)
 	struct gpy_priv *priv;
 	int fw_version;
 	int buf = 0;
+	int ret;
+
+	ret = gpy211_led_write(phydev);
+	if (ret)
+		return ret;
 
 	priv = devm_kzalloc(phydev->priv, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -189,7 +193,7 @@ static int gpy211_probe(struct phy_device *phydev)
 	//enable downshift and set training counter threshold to 3
 	phy_write_mmd(phydev, MDIO_MMD_VEND1, VSPEC1_NBT_DS_CTRL, buf | FIELD_PREP(DOWNSHIFT_THR_MASK, 0x3) | DOWNSHIFT_EN);
 
-	return gpy211_led_write(phydev);
+	return 0;
 }
 
 static bool gpy211_sgmii_aneg_en(struct phy_device *phydev)
@@ -246,10 +250,7 @@ static int gpy211_update_interface(struct phy_device *phydev)
 		break;
 	}
 
-	if (phydev->speed == SPEED_2500 || phydev->speed == SPEED_1000)
-		phydev->duplex = DUPLEX_FULL;
-
-	return ret;
+	return 0;
 }
 
 static int gpy211_read_status(struct phy_device *phydev)
@@ -306,7 +307,7 @@ static int gpy211_startup(struct phy_device *phydev)
 {
 	int ret;
 
-	ret = genphy_update_link(phydev);
+	ret = genphy_parse_link(phydev);
 	if (ret)
 		return ret;
 

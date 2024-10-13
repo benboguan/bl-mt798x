@@ -108,19 +108,27 @@
 
 &eth {
 	status = "okay";
-	mediatek,gmac-id = <1>;
-	mediatek,sgmiisys = <&sgmiisys1>;
-	phy-mode = "sgmii";
-	phy-handle = <&phy5>;
+	mediatek,gmac-id = <0>;
+	phy-mode = "2500base-x";
+	mediatek,switch = "mt7531";
+	reset-gpios = <&gpio 39 GPIO_ACTIVE_HIGH>;
+
+	fixed-link {
+		speed = <2500>;
+		full-duplex;
+	};
 
 	phy5: eth-phy@5 {
+		mediatek,gmac-id = <1>;
+		mediatek,sgmiisys = <&sgmiisys1>;
+		phy-mode = "2500base-x";
+		phy-handle = <&phy5>;
+
 		compatible = "ethernet-phy-id67c9.de0a";
-		reg = <5>;
+		reg = <15>;
 		reset-gpios = <&gpio 7 GPIO_ACTIVE_LOW>;
 		reset-assert-us = <600>;
 		reset-deassert-us = <20000>;
-		maxlinear,led-drive-vdd;
-		maxlinear,led-reg = <0x3c0 0x330 0x0 0x0>;
 	};
 };
 

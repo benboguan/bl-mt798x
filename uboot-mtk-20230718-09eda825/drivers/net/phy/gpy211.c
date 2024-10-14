@@ -160,7 +160,8 @@ static int gpy211_phy_config(struct phy_device *phydev)
 
 static int gpy211_probe(struct phy_device *phydev)
 {
-	//int sgmii_reg = phy_read_mmd(phydev, MDIO_MMD_VEND1, 8);
+	int i;
+	int sgmii_reg = phy_read_mmd(phydev, MDIO_MMD_VEND1, 8);
 	struct gpy_priv *priv;
 	int fw_version;
 	int buf = 0;
@@ -169,6 +170,14 @@ static int gpy211_probe(struct phy_device *phydev)
 	ret = gpy211_led_write(phydev);
 	if (ret)
 		return ret;
+
+	//GPY211 with external flash requires at least 750ms to wait for mdio ready, here 1000ms
+	for(i=0;i<1000;i++){
+		if(sgmii_reg > 0)
+			break;
+		mdelay(1000);
+		sgmii_reg = phy_read_mmd(phydev, MDIO_MMD_VEND1, 8);
+	}
 
 	priv = devm_kzalloc(phydev->priv, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -187,7 +196,8 @@ static int gpy211_probe(struct phy_device *phydev)
 		    fw_version & PHY_FWV_REL_MASK ? "" : " test version");
 
 	/* enable 2.5G SGMII rate adaption */
-	phy_write_mmd(phydev, MDIO_MMD_VEND1, 8, 0x24e2);
+	//phy_write_mmd(phydev, MDIO_MMD_VEND1, 8, 0x24e2);
+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 8, 0xa4fa);
 
 	buf = phy_read_mmd(phydev, MDIO_MMD_VEND1, VSPEC1_NBT_DS_CTRL);
 	//enable downshift and set training counter threshold to 3
@@ -316,7 +326,7 @@ static int gpy211_startup(struct phy_device *phydev)
 
 U_BOOT_PHY_DRIVER(gpy211) = {
 	.name = "Intel GPY211 PHY",
-	.uid = 0x67c9de0a,
+	.uid = 0x67c9de00,
 	.mask = 0x0ffffff0,
 	.features = PHY_GBIT_FEATURES,
 	.probe = &gpy211_probe,

@@ -259,7 +259,7 @@
 		resets = <&ethsys ETHSYS_FE_RST>;
 		reset-names = "fe";
 		mediatek,ethsys = <&ethsys>;
-		mediatek,sgmiisys = <&sgmiisys0>;
+		mediatek,sgmiisys = <&sgmiisys0>,<&sgmiisys1>;
 		mediatek,infracfg = <&topmisc>;
 		#address-cells = <1>;
 		#size-cells = <0>;

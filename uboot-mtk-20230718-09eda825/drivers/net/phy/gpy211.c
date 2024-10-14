@@ -168,7 +168,7 @@ static int gpy211_probe(struct phy_device *phydev)
 	int ret;
 
 	ret = gpy211_led_write(phydev);
-	if (ret)
+	if (ret < 0)
 		return ret;
 
 	//GPY211 with external flash requires at least 750ms to wait for mdio ready, here 1000ms
@@ -326,7 +326,7 @@ static int gpy211_startup(struct phy_device *phydev)
 
 U_BOOT_PHY_DRIVER(gpy211) = {
 	.name = "Intel GPY211 PHY",
-	.uid = 0x67c9de00,
+	.uid = 0x67c9de0a,
 	.mask = 0x0ffffff0,
 	.features = PHY_GBIT_FEATURES,
 	.probe = &gpy211_probe,

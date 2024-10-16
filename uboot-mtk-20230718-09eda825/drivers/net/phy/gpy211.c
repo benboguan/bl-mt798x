@@ -29,6 +29,24 @@
 #define PHY_MIISTAT_SPD_1000	2
 #define PHY_MIISTAT_SPD_2500	4
 
+#define	ETHTOOL_LINK_MODE_10baseT_Half_BIT	 0
+#define	ETHTOOL_LINK_MODE_10baseT_Full_BIT	 1
+#define	ETHTOOL_LINK_MODE_100baseT_Half_BIT	 2
+#define	ETHTOOL_LINK_MODE_100baseT_Full_BIT	 3
+#define	ETHTOOL_LINK_MODE_1000baseT_Half_BIT	 4
+#define	ETHTOOL_LINK_MODE_1000baseT_Full_BIT	 5
+#define ETHTOOL_LINK_MODE_Autoneg_BIT			 6
+#define	ETHTOOL_LINK_MODE_10000baseT_Full_BIT	 12
+#define	ETHTOOL_LINK_MODE_2500baseX_Full_BIT	 15
+#define	ETHTOOL_LINK_MODE_1000baseKX_Full_BIT	 17
+#define ETHTOOL_LINK_MODE_1000baseX_Full_BIT	 41
+#define	ETHTOOL_LINK_MODE_2500baseT_Full_BIT	 47
+#define	ETHTOOL_LINK_MODE_5000baseT_Full_BIT	 48
+#define	ETHTOOL_LINK_MODE_100baseT1_Full_BIT	 67
+#define	ETHTOOL_LINK_MODE_1000baseT1_Full_BIT	 68
+
+#define __ETHTOOL_LINK_MODE_MASK_NBITS 51
+
 /* PHY Interface Modes */
 #define PHY_INTERFACE_MODE_NONE	0
 #define PHY_INTERFACE_MODE_INTERNAL	1
@@ -102,6 +120,44 @@ struct gpy_priv {
 	u8 fw_minor;
 };
 
+static inline void linkmode_set_bit(int nr, int addr)
+{
+	__set_bit(nr, addr);
+}
+
+static inline void linkmode_clear_bit(int nr, int addr)
+{
+	__clear_bit(nr, addr);
+}
+
+static inline void linkmode_mod_bit(int nr, int addr,
+				    int set)
+{
+	if (set)
+		linkmode_set_bit(nr, addr);
+	else
+		linkmode_clear_bit(nr, addr);
+}
+
+/**
+ * mii_stat1000_mod_linkmode_lpa_t
+ * @advertising: target the linkmode advertisement settings
+ * @adv: value of the MII_STAT1000 register
+ *
+ * A small helper function that translates MII_STAT1000 bits, when in
+ * 1000Base-T mode, to linkmode advertisement settings. Other bits in
+ * advertising are not changes.
+ */
+static inline void mii_stat1000_mod_linkmode_lpa_t(u32 advertising,
+						   u32 lpa)
+{
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Half_BIT,
+			 advertising, lpa & LPA_1000HALF);
+
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+			 advertising, lpa & LPA_1000FULL);
+}
+
 static int gpy211_led_write(struct phy_device *phydev)
 {
 	u32 led_regs[MAXLINEAR_MAX_LED_INDEX] = {0};
@@ -150,10 +206,10 @@ static int gpy211_led_write(struct phy_device *phydev)
 
 static int gpy211_phy_config(struct phy_device *phydev)
 {
-	genphy_config_aneg(phydev);
-	phy_reset(phydev);
+	//genphy_config_aneg(phydev);
+	//phy_reset(phydev);
 
-	genphy_restart_aneg(phydev);
+	//genphy_restart_aneg(phydev);
 
 	return 0;
 }
@@ -168,12 +224,12 @@ static int gpy211_probe(struct phy_device *phydev)
 	int ret;
 
 	ret = gpy211_led_write(phydev);
-	if (ret < 0)
+	if (ret)
 		return ret;
 
-	//GPY211 with external flash requires at least 750ms to wait for mdio ready, here 1000ms
-	for(i=0;i<1000;i++){
-		if(sgmii_reg > 0)
+	/* GPY211 with external flash requires at least 750ms to wait for mdio ready, here 1000ms */
+	for (i = 0; i < 1000; i++){
+		if (sgmii_reg > 0)
 			break;
 		mdelay(1000);
 		sgmii_reg = phy_read_mmd(phydev, MDIO_MMD_VEND1, 8);
@@ -196,12 +252,67 @@ static int gpy211_probe(struct phy_device *phydev)
 		    fw_version & PHY_FWV_REL_MASK ? "" : " test version");
 
 	/* enable 2.5G SGMII rate adaption */
-	//phy_write_mmd(phydev, MDIO_MMD_VEND1, 8, 0x24e2);
-	phy_write_mmd(phydev, MDIO_MMD_VEND1, 8, 0xa4fa);
+	//phy_write_mmd(phydev, MDIO_MMD_VEND1, 8, 0xa4fa);
+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 8, 0x24e2);
 
 	buf = phy_read_mmd(phydev, MDIO_MMD_VEND1, VSPEC1_NBT_DS_CTRL);
-	//enable downshift and set training counter threshold to 3
+	/* enable downshift and set training counter threshold to 3 */
 	phy_write_mmd(phydev, MDIO_MMD_VEND1, VSPEC1_NBT_DS_CTRL, buf | FIELD_PREP(DOWNSHIFT_THR_MASK, 0x3) | DOWNSHIFT_EN);
+
+	return 0;
+}
+
+static int genphy_read_abilities(struct phy_device *phydev)
+{
+	int val;
+
+	val = phy_read(phydev, MDIO_MMD_VEND1, MII_BMSR);
+	if (val < 0)
+		return val;
+
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_Autoneg_BIT, phydev->supported,
+			 val & BMSR_ANEGCAPABLE);
+
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, phydev->supported,
+			 val & BMSR_100FULL);
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT, phydev->supported,
+			 val & BMSR_100HALF);
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT, phydev->supported,
+			 val & BMSR_10FULL);
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT, phydev->supported,
+			 val & BMSR_10HALF);
+
+	if (val & BMSR_ESTATEN) {
+		val = phy_read(phydev, MDIO_MMD_VEND1, MII_ESTATUS);
+		if (val < 0)
+			return val;
+
+		linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+				 phydev->supported, val & ESTATUS_1000_TFULL);
+		linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseT_Half_BIT,
+				 phydev->supported, val & ESTATUS_1000_THALF);
+		linkmode_mod_bit(ETHTOOL_LINK_MODE_1000baseX_Full_BIT,
+				 phydev->supported, val & ESTATUS_1000_XFULL);
+	}
+
+	return 0;
+}
+
+static int gpy211_get_features(struct phy_device *phydev)
+{
+	int ret;
+
+	ret = genphy_read_abilities(phydev);
+	if (ret)
+		return ret;
+
+	/* GPY211 with rate adaption supports 100M/1G/2.5G speed. */
+	linkmode_clear_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT,
+			   phydev->supported);
+	linkmode_clear_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT,
+			   phydev->supported);
+	linkmode_set_bit(ETHTOOL_LINK_MODE_2500baseX_Full_BIT,
+			 phydev->supported);
 
 	return 0;
 }
@@ -260,7 +371,7 @@ static int gpy211_update_interface(struct phy_device *phydev)
 		break;
 	}
 
-	return 0;
+	return ret;
 }
 
 static int gpy211_read_status(struct phy_device *phydev)
@@ -269,7 +380,7 @@ static int gpy211_read_status(struct phy_device *phydev)
 	const char *duplex;
 	int ret;
 
-	ret = genphy_update_link(phydev);
+	ret = gpy211_get_features(phydev);
 	if (ret)
 		return ret;
 
@@ -315,19 +426,21 @@ static int gpy211_read_status(struct phy_device *phydev)
 
 static int gpy211_startup(struct phy_device *phydev)
 {
-	int ret;
+    int ret;
 
-	ret = genphy_parse_link(phydev);
-	if (ret)
-		return ret;
-
+    ret = genphy_update_link(phydev);
+    if (ret)
+        return ret;
+    ret = genphy_parse_link(phydev);
+    if (ret)
+        return ret;
 	return gpy211_read_status(phydev);
 }
 
 U_BOOT_PHY_DRIVER(gpy211) = {
 	.name = "Intel GPY211 PHY",
-	.uid = 0x67c9de0a,
-	.mask = 0x0ffffff0,
+	.uid = 0x67c9de00,
+	.mask = 0x0fffffff0,
 	.features = PHY_GBIT_FEATURES,
 	.probe = &gpy211_probe,
 	.config = &gpy211_phy_config,

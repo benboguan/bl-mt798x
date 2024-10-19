@@ -206,10 +206,10 @@ static int gpy211_led_write(struct phy_device *phydev)
 
 static int gpy211_phy_config(struct phy_device *phydev)
 {
-	//genphy_config_aneg(phydev);
-	//phy_reset(phydev);
+	genphy_config_aneg(phydev);
+	phy_reset(phydev);
 
-	//genphy_restart_aneg(phydev);
+	genphy_restart_aneg(phydev);
 
 	return 0;
 }
@@ -428,18 +428,20 @@ static int gpy211_startup(struct phy_device *phydev)
 {
     int ret;
 
-    ret = genphy_update_link(phydev);
-    if (ret)
-        return ret;
-    ret = genphy_parse_link(phydev);
-    if (ret)
-        return ret;
+	ret = genphy_update_link(phydev);
+	if (ret)
+		return ret;
+
+	ret = genphy_parse_link(phydev);
+	if (ret)
+		return ret;
+
 	return gpy211_read_status(phydev);
 }
 
 U_BOOT_PHY_DRIVER(gpy211) = {
 	.name = "Intel GPY211 PHY",
-	.uid = 0x67c9de00,
+	.uid = 0x67c9de0a,
 	.mask = 0x0fffffff0,
 	.features = PHY_GBIT_FEATURES,
 	.probe = &gpy211_probe,

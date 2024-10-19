@@ -183,6 +183,16 @@ static void mtk_gdma_write(struct mtk_eth_priv *priv, int no, u32 reg,
 	writel(val, priv->fe_base + gdma_base + reg);
 }
 
+static u32 mtk_fe_read(struct mtk_eth_priv *priv, u32 reg)
+{
+	return readl(priv->fe_base + reg);
+}
+
+static void mtk_fe_write(struct mtk_eth_priv *priv, u32 reg, u32 val)
+{
+	writel(val, priv->fe_base + reg);
+}
+
 static void mtk_fe_rmw(struct mtk_eth_priv *priv, u32 reg, u32 clr, u32 set)
 {
 	clrsetbits_le32(priv->fe_base + reg, clr, set);
@@ -675,6 +685,61 @@ static int mt7530_pad_clk_setup(struct mtk_eth_priv *priv, int mode)
 			      REG_GSWCK_EN | REG_TRGMIICK_EN);
 
 	return 0;
+}
+
+static struct mtk_eth_priv *eth_priv[2] = { 0 };
+
+/* Force LED0 of GPY211 ON/OFF
+ * @phy:	PHY address
+ * @onoff:	0: OFF, otherwise: ON
+ */
+void gpy211_force_onoff(int phy, int onoff)
+{
+	struct mtk_eth_priv *priv = eth_priv[1];
+	int inv = 0, val = !!onoff;
+
+	if (!priv)
+		return;
+	if (phy == 6)
+		inv = 1 << 12;	/* 2.5G WAN LED, active low */
+	else if (phy == 5)
+		inv = 0;	/* 2.5G LAN LED, active high */
+	//if (phy == 5 || phy == 6) {
+	//	inv = 0xF << 12;	/* Four LEDs */
+	//	val = onoff? 0xF : 0;
+	//}
+	else
+		return;
+
+	priv->mmd_write(priv, phy, 0, 27, inv | val);
+}
+
+/* Force LED0 of MT7531 ON/OFF
+ * @onoff:	1: ON, otherwise: off
+ */
+void mt7531_force_onoff(int onoff)
+{
+	struct mtk_eth_priv *priv = eth_priv[0];
+
+	if (!eth_priv[0])
+		return;
+
+	if (onoff) {
+		/* Make sure LEDs are not controlled by LED_MODE,
+		 * force on link LED (LED0) and turn on activity LED (LED1).
+		 */
+		mt753x_core_reg_write(priv, 0x21, 0x8009);
+		mt753x_core_reg_write(priv, 0x24, 0x8040);
+		mt753x_core_reg_write(priv, 0x26, 0x0);
+	} else {
+		/* Use LED_MODE to control LEDs and disable all LEDs, clock must be sustain. */
+		mt753x_core_reg_write(priv, 0x21, 0x8009);
+		mt753x_core_reg_write(priv, 0x22, 0x0c00);
+		mt753x_core_reg_write(priv, 0x23, 0x1400);
+		mt753x_core_reg_write(priv, 0x24, 0xc007);
+		mt753x_core_reg_write(priv, 0x25, 0x0);
+		mt753x_core_reg_write(priv, 0x26, 0xc007);
+	}
 }
 
 static void mt7530_mac_control(struct mtk_eth_priv *priv, bool enable)
@@ -1781,7 +1846,7 @@ static int mtk_eth_probe(struct udevice *dev)
 	struct eth_pdata *pdata = dev_get_plat(dev);
 	struct mtk_eth_priv *priv = dev_get_priv(dev);
 	ulong iobase = pdata->iobase;
-	int ret;
+	int ret, phy;
 
 	/* Frame Engine Register Base */
 	priv->fe_base = (void *)iobase;
@@ -1801,6 +1866,11 @@ static int mtk_eth_probe(struct udevice *dev)
 	priv->rx_ring_noc = (void *)
 		noncached_alloc(priv->soc->rxd_size * NUM_RX_DESC,
 				ARCH_DMA_MINALIGN);
+	if (priv->sw == SW_NONE)
+	{	//reset phy
+		dm_gpio_set_value(&priv->rst_gpio, 1);
+		mdelay(20);
+	}
 
 	/* Set MAC mode */
 	if (priv->phy_interface == PHY_INTERFACE_MODE_USXGMII)
@@ -1810,15 +1880,42 @@ static int mtk_eth_probe(struct udevice *dev)
 
 	/* Probe phy if switch is not specified */
 	if (priv->sw == SW_NONE)
-		return mtk_phy_probe(dev);
+		//return mtk_phy_probe(dev);
 
 	/* Initialize switch */
-	return mt753x_switch_init(priv);
+	//return mt753x_switch_init(priv);
+	{
+		ret = mtk_phy_probe(dev);
+		//for intel gphy211 only
+		if (phy == 5)
+			priv->mmd_write(priv, 5, MDIO_MMD_VEND1, 8, 0x24e2);
+		if (phy == 6)
+			priv->mmd_write(priv, 6, MDIO_MMD_VEND1, 8, 0x24e2);
+	} else {
+		/* Initialize switch */
+		ret = mt753x_switch_init(priv);
+	}
+
+	if (priv->gmac_id >= 0 && priv->gmac_id < ARRAY_SIZE(eth_priv)) {
+		eth_priv[priv->gmac_id] = priv;
+
+		if (priv->sw == SW_NONE) {
+			gpy211_force_onoff(6, 1);
+			gpy211_force_onoff(5, 1);
+		} else {
+			mt7531_force_onoff(1);
+		}
+	}
+
+	return ret;
 }
 
 static int mtk_eth_remove(struct udevice *dev)
 {
 	struct mtk_eth_priv *priv = dev_get_priv(dev);
+
+	if (priv->gmac_id >= 0 && priv->gmac_id < ARRAY_SIZE(eth_priv))
+		eth_priv[priv->gmac_id] = NULL;
 
 	/* MDIO unregister */
 	mdio_unregister(priv->mdio_bus);
@@ -2008,6 +2105,7 @@ static int mtk_eth_of_to_plat(struct udevice *dev)
 					     &priv->rst_gpio, GPIOD_IS_OUT);
 		}
 	} else {
+		gpio_request_by_name(dev, "reset-gpios", 0, &priv->rst_gpio, GPIOD_IS_OUT);
 		ret = dev_read_phandle_with_args(dev, "phy-handle", NULL, 0,
 						 0, &args);
 		if (ret) {

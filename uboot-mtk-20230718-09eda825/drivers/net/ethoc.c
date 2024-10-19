@@ -608,10 +608,10 @@ static int ethoc_mdio_init(const char *name, struct ethoc *priv)
 static int ethoc_phy_init(struct ethoc *priv, void *dev)
 {
 	struct phy_device *phydev;
-	int mask = -1;
+	int mask = 0xffffffff;
 
 #ifdef CONFIG_PHY_ADDR
-	mask = CONFIG_PHY_ADDR;
+	mask = 1 << CONFIG_PHY_ADDR;
 #endif
 
 	phydev = phy_connect(priv->bus, mask, dev, PHY_INTERFACE_MODE_MII);

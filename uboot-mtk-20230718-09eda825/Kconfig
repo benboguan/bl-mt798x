@@ -29,6 +29,16 @@ config DEPRECATED
 	  code that relies on deprecated features that will be removed and
 	  the conversion deadline has passed.
 
+config MODEL
+	string "Model name"
+	default "PANTHERB" if CONFIG_SYS_BOARD = "mt7986"
+	default "CHEETAH" if CONFIG_SYS_BOARD = "mt7981"
+
+config ASUS_PRODUCT
+	bool "ASUS Product"
+	default n
+
+
 config LOCALVERSION
 	string "Local version - append to U-Boot release"
 	help

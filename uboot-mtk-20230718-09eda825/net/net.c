@@ -130,6 +130,15 @@
 #include "dhcpv6.h"
 #include "net_rand.h"
 
+#if defined(CONFIG_ASUS_PRODUCT)
+#include <linux/delay.h>
+#include <gpio.h>
+#include <cmd_tftpServer.h>
+extern void TftpSend(void);
+extern void TftpdStart(void);
+struct in_addr TempServerIP;
+#endif
+
 /** BOOTP EXTENTIONS **/
 
 /* Our subnet mask (0=unknown) */
@@ -361,6 +370,24 @@ static int net_init_loop(void)
 {
 	static bool first_call = true;
 
+#if defined(CONFIG_ASUS_PRODUCT)
+	static int env_changed_id;
+	int env_id = env_get_id();
+
+	/* update only when the environment has changed */
+	if (env_changed_id != env_id) {
+		net_ip = env_get_ip("ipaddr");
+		net_gateway = env_get_ip("gatewayip");
+		net_netmask = env_get_ip("netmask");
+		net_server_ip = env_get_ip("serverip");
+		net_native_vlan = env_get_vlan("nvlan");
+		net_our_vlan = env_get_vlan("vlan");
+#if defined(CONFIG_CMD_DNS)
+		net_dns_server = env_get_ip("dnsip");
+#endif
+		env_changed_id = env_id;
+	}
+#endif
 	if (eth_get_dev()) {
 		memcpy(net_ethaddr, eth_get_ethaddr(), 6);
 
@@ -426,6 +453,9 @@ int net_init(void)
 		if (IS_ENABLED(CONFIG_PROT_TCP))
 			tcp_set_tcp_state(TCP_CLOSED);
 	}
+#if defined(CONFIG_ASUS_PRODUCT)
+	memset(&TempServerIP, 0, sizeof(TempServerIP));
+#endif
 
 	return net_init_loop();
 }
@@ -439,6 +469,21 @@ int net_loop(enum proto_t protocol)
 {
 	int ret = -EINVAL;
 	enum net_loop_state prev_net_state = net_state;
+#if defined(CONFIG_ASUS_PRODUCT) && !defined(PLAX56_XP4)
+	void (*func_led_off)(void) = power_led_off;
+	void (*func_led_on)(void) = power_led_on;
+	int i=0;
+#endif
+#if defined(CONFIG_ASUS_PRODUCT) && defined(RESCUE_SWITCH2_RESET_DEFAULT)
+	ulong time_checked;
+#endif
+
+#if defined(CONFIG_ASUS_PRODUCT)
+	if (protocol == TFTPD) {
+		g_rescue_mode = 1;
+		g_rescue_data_going = 0;
+	}
+#endif
 
 #if defined(CONFIG_CMD_PING)
 	if (protocol != PING)
@@ -469,7 +514,24 @@ int net_loop(enum proto_t protocol)
 	if (eth_is_on_demand_init()) {
 		eth_halt();
 		eth_set_current();
+#if defined(CONFIG_ASUS_PRODUCT)
+		do {
+#endif
 		ret = eth_init();
+#if defined(CONFIG_ASUS_PRODUCT)
+		if (ret<0) {
+#if defined(RESCUE_SWITCH2_RESET_DEFAULT)
+			int i = 0;
+			while ( i++ < 20) {
+				mdelay(50);
+				switch_r2default_detect();
+			}
+#else
+			mdelay(1000);
+#endif
+		}
+		} while (ret<0);
+#endif
 		if (ret < 0) {
 			eth_halt();
 			return ret;
@@ -494,6 +556,17 @@ restart:
 
 	if (!test_eth_enabled())
 		return 0;
+
+#if defined(CONFIG_ASUS_PRODUCT)
+	printf("switch prereq:%d\n", net_check_prereq (protocol));      // tmp test
+	if (net_ethaddr[0] & 0x1) {
+		uchar *p = net_ethaddr;
+
+		printf("Invalid enetaddr %02x:%02x:%02x:%02x:%02x:%02x\n",
+			p[0], p[1], p[2], p[3], p[4], p[5]);
+		*p &= 0xFE;
+	}
+#endif
 
 	switch (net_check_prereq(protocol)) {
 	case 1:
@@ -532,6 +605,12 @@ restart:
 #if defined(CONFIG_TCP_FUNCTION_FASTBOOT)
 		case FASTBOOT_TCP:
 			fastboot_tcp_start_server();
+			break;
+#endif
+#if defined(CONFIG_ASUS_PRODUCT)
+		case TFTPD:
+			printf("tftpd start\n");
+			TftpdStart();
 			break;
 #endif
 #if defined(CONFIG_CMD_DHCP)
@@ -649,6 +728,23 @@ restart:
 	 *	Main packet reception loop.  Loop receiving packets until
 	 *	someone sets `net_state' to a state that terminates.
 	 */
+
+#ifdef CONFIG_ASUS_PRODUCT
+#if !defined(PLAX56_XP4)
+	i = g_led_intv;
+#endif
+	time_delta = CONFIG_SYS_HZ;
+	if (ubi_damaged == 1) {
+#if !defined(PLAX56_XP4)
+		func_led_off = all_leds_off;
+		func_led_on = all_leds_on;
+#endif
+	}
+#endif
+#if defined(CONFIG_ASUS_PRODUCT) && defined(RESCUE_SWITCH2_RESET_DEFAULT)
+	if (g_rescue_mode)
+		time_checked = get_timer(0);
+#endif
 	for (;;) {
 		schedule();
 		if (arp_timeout_check() > 0)
@@ -689,6 +785,12 @@ restart:
 			goto done;
 		}
 
+#if defined(CONFIG_ASUS_PRODUCT) && defined(RESCUE_SWITCH2_RESET_DEFAULT)
+		if (g_rescue_mode && !g_rescue_data_going && ((get_timer(0) - time_checked) > (CONFIG_SYS_HZ/20))) {
+			switch_r2default_detect();
+			time_checked = get_timer(0);
+		}
+#endif
 		/*
 		 *	Check for a timeout, and run the timeout handler
 		 *	if we have one.
@@ -696,6 +798,18 @@ restart:
 		if (time_handler &&
 		    ((get_timer(0) - time_start) > time_delta)) {
 			thand_f *x;
+
+#if defined(CONFIG_ASUS_PRODUCT) && !defined(PLAX56_XP4)
+                       /*ASUS*/
+                        if ((i & 1) == 0) {
+				func_led_off();
+                        } else {
+				func_led_on();
+                        }
+                        ++i;
+                        if (i == 0xffffff)
+				i = 0;
+#endif
 
 #if defined(CONFIG_MII) || defined(CONFIG_CMD_MII)
 #if	defined(CONFIG_SYS_FAULT_ECHO_LINK_DOWN)	&& \
@@ -779,6 +893,11 @@ done:
 #if defined(CONFIG_CMD_PCAP)
 	if (pcap_active())
 		pcap_print_status();
+#endif
+
+#if defined(CONFIG_ASUS_PRODUCT)
+leave:
+	power_led_on();
 #endif
 	return ret;
 }
@@ -1467,6 +1586,9 @@ void net_process_received_packet(uchar *in_packet, int len)
 		/*
 		 * IP header OK.  Pass the packet to the current handler.
 		 */
+#if defined(CONFIG_ASUS_PRODUCT)
+		net_copy_ip(&TempServerIP,(void*)&ip->ip_src);/*TempServerIP is used in TFTPD */
+#endif
 		(*udp_packet_handler)((uchar *)ip + IP_UDP_HDR_SIZE,
 				      ntohs(ip->udp_dst),
 				      src_ip,

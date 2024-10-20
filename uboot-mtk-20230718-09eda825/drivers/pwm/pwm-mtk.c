@@ -56,6 +56,8 @@ struct mtk_pwm_priv {
 	const struct mtk_pwm_soc *soc;
 };
 
+struct mtk_pwm_priv *mm_priv = NULL;
+struct udevice *mm_dev = NULL;
 static void mtk_pwm_w32(struct udevice *dev, uint channel, uint reg, uint val)
 {
 	struct mtk_pwm_priv *priv = dev_get_priv(dev);
@@ -147,6 +149,7 @@ static int mtk_pwm_probe(struct udevice *dev)
 	struct mtk_pwm_priv *priv = dev_get_priv(dev);
 	int ret = 0;
 	int i;
+	u64 val;
 
 	priv->soc = (struct mtk_pwm_soc *)dev_get_driver_data(dev);
 	priv->base = dev_read_addr_ptr(dev);
@@ -163,10 +166,15 @@ static int mtk_pwm_probe(struct udevice *dev)
 
 		snprintf(name, sizeof(name), "pwm%d", i + 1);
 		ret = clk_get_by_name(dev, name, &priv->pwm_clks[i]);
+		val = clk_get_rate(&priv->pwm_clks[i]);
 		if (ret < 0)
 			return ret;
 	}
 
+#if defined(CONFIG_ASUS_PRODUCT)
+	mm_priv = priv;
+	mm_dev = dev;
+#endif
 	return ret;
 }
 

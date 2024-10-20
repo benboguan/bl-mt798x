@@ -24,6 +24,10 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+#if defined(CONFIG_ASUS_PRODUCT)
+#include <net.h>
+extern int modifies;
+#endif
 #if defined(CONFIG_CMD_IMI)
 static int image_info(unsigned long addr);
 #endif
@@ -174,6 +178,19 @@ int bootm_maybe_autostart(struct cmd_tbl *cmdtp, const char *cmd)
 		char *local_args[2];
 		local_args[0] = (char *)cmd;
 		local_args[1] = NULL;
+
+#if defined(CONFIG_ASUS_PRODUCT)
+		if(modifies) {
+			env_set("autostart", "no");
+			env_set("bootfile", net_boot_file_name);
+			debug("save bootfile= %s\n", env_get("bootfile"));
+
+#ifdef CONFIG_CMD_SAVEENV
+			env_save();
+#endif
+		}
+#endif	/* CONFIG_ASUS_PRODUCT */
+
 		printf("Automatic boot of image at addr 0x%08lX ...\n",
 		       image_load_addr);
 		return do_bootm(cmdtp, 0, 1, local_args);

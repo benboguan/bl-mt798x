@@ -6,7 +6,6 @@
  * Author: Mark Lee <mark-mc.lee@mediatek.com>
  */
 
-#include <common.h>
 #include <cpu_func.h>
 #include <dm.h>
 #include <log.h>
@@ -26,6 +25,7 @@
 #include <linux/ioport.h>
 #include <linux/mdio.h>
 #include <linux/mii.h>
+#include <linux/printk.h>
 
 #include "mtk_eth.h"
 
@@ -136,6 +136,7 @@ struct mtk_eth_priv {
 	int force_mode;
 	int speed;
 	int duplex;
+	int mdc;
 	bool pn_swap;
 
 	struct phy_device *phydev;
@@ -700,16 +701,21 @@ void gpy211_force_onoff(int phy, int onoff)
 
 	if (!priv)
 		return;
+#if defined(TUFAX4200) || defined(TUFAX6000)
 	if (phy == 6)
 		inv = 1 << 12;	/* 2.5G WAN LED, active low */
 	else if (phy == 5)
 		inv = 0;	/* 2.5G LAN LED, active high */
-	//if (phy == 5 || phy == 6) {
-	//	inv = 0xF << 12;	/* Four LEDs */
-	//	val = onoff? 0xF : 0;
-	//}
 	else
 		return;
+#elif defined(PANTHERA) || defined(7981RXXX)
+	if (phy == 5 || phy == 6) {
+		inv = 0xF << 12;	/* Four LEDs */
+		val = onoff? 0xF : 0;
+	}
+	else
+		return;
+#endif
 
 	priv->mmd_write(priv, phy, 0, 27, inv | val);
 }
@@ -726,7 +732,7 @@ void mt7531_force_onoff(int onoff)
 
 	if (onoff) {
 		/* Make sure LEDs are not controlled by LED_MODE,
-		 * force on link LED (LED0) and turn on activity LED (LED1).
+		 * force on link LED (LED0) and turn off activity LED (LED1).
 		 */
 		mt753x_core_reg_write(priv, 0x21, 0x8009);
 		mt753x_core_reg_write(priv, 0x24, 0x8040);
@@ -1309,7 +1315,8 @@ static int mtk_phy_start(struct mtk_eth_priv *priv)
 	}
 
 	if (!priv->force_mode) {
-		if (priv->phy_interface == PHY_INTERFACE_MODE_USXGMII)
+		if (priv->phy_interface == PHY_INTERFACE_MODE_USXGMII ||
+		    priv->phy_interface == PHY_INTERFACE_MODE_XGMII)
 			mtk_xphy_link_adjust(priv);
 		else
 			mtk_phy_link_adjust(priv);
@@ -1579,7 +1586,7 @@ static void mtk_mac_init(struct mtk_eth_priv *priv)
 
 static void mtk_xmac_init(struct mtk_eth_priv *priv)
 {
-	u32 sts;
+	u32 force_link = 0;
 
 	switch (priv->phy_interface) {
 	case PHY_INTERFACE_MODE_USXGMII:
@@ -1594,14 +1601,18 @@ static void mtk_xmac_init(struct mtk_eth_priv *priv)
 		       SYSCFG0_GE_MODE_M << SYSCFG0_GE_MODE_S(priv->gmac_id),
 		       0);
 
-	if (priv->gmac_id == 1) {
+	if (priv->phy_interface == PHY_INTERFACE_MODE_USXGMII &&
+	    priv->gmac_id == 1) {
 		mtk_infra_rmw(priv, TOPMISC_NETSYS_PCS_MUX,
 			      NETSYS_PCS_MUX_MASK, MUX_G2_USXGMII_SEL);
-	} else if (priv->gmac_id == 2) {
-		sts = mtk_gmac_read(priv, XGMAC_STS(priv->gmac_id));
-		sts |= XGMAC_FORCE_LINK;
-		mtk_gmac_write(priv, XGMAC_STS(priv->gmac_id), sts);
 	}
+
+	if (priv->phy_interface == PHY_INTERFACE_MODE_XGMII ||
+	    priv->gmac_id == 2)
+		force_link = XGMAC_FORCE_LINK(priv->gmac_id);
+
+	mtk_gmac_rmw(priv, XGMAC_STS(priv->gmac_id),
+		     XGMAC_FORCE_LINK(priv->gmac_id), force_link);
 
 	/* Force GMAC link down */
 	mtk_gmac_write(priv, GMAC_PORT_MCR(priv->gmac_id), FORCE_MODE);
@@ -1669,6 +1680,26 @@ static void mtk_eth_fifo_init(struct mtk_eth_priv *priv)
 	mtk_pdma_write(priv, RX_CRX_IDX_REG(0), NUM_RX_DESC - 1);
 
 	mtk_pdma_write(priv, PDMA_RST_IDX_REG, RST_DTX_IDX0 | RST_DRX_IDX0);
+}
+
+static void mtk_eth_mdc_init(struct mtk_eth_priv *priv)
+{
+	u32 divider;
+
+	if (priv->mdc == 0)
+		return;
+
+	divider = min_t(u32, DIV_ROUND_UP(MDC_MAX_FREQ, priv->mdc), MDC_MAX_DIVIDER);
+
+	/* Configure MDC turbo mode */
+	if (MTK_HAS_CAPS(priv->soc->caps, MTK_NETSYS_V3))
+		mtk_gmac_rmw(priv, GMAC_MAC_MISC_REG, 0, MISC_MDC_TURBO);
+	else
+		mtk_gmac_rmw(priv, GMAC_PPSC_REG, 0, MISC_MDC_TURBO);
+
+	/* Configure MDC divider */
+	mtk_gmac_rmw(priv, GMAC_PPSC_REG, PHY_MDC_CFG,
+		     FIELD_PREP(PHY_MDC_CFG, divider));
 }
 
 static int mtk_eth_start(struct udevice *dev)
@@ -1866,6 +1897,10 @@ static int mtk_eth_probe(struct udevice *dev)
 	priv->rx_ring_noc = (void *)
 		noncached_alloc(priv->soc->rxd_size * NUM_RX_DESC,
 				ARCH_DMA_MINALIGN);
+
+	/* Set MDC divider */
+	mtk_eth_mdc_init(priv);
+
 	if (priv->sw == SW_NONE)
 	{	//reset phy
 		dm_gpio_set_value(&priv->rst_gpio, 1);
@@ -1873,7 +1908,8 @@ static int mtk_eth_probe(struct udevice *dev)
 	}
 
 	/* Set MAC mode */
-	if (priv->phy_interface == PHY_INTERFACE_MODE_USXGMII)
+	if (priv->phy_interface == PHY_INTERFACE_MODE_USXGMII ||
+	    priv->phy_interface == PHY_INTERFACE_MODE_XGMII)
 		mtk_xmac_init(priv);
 	else
 		mtk_mac_init(priv);
@@ -1881,16 +1917,14 @@ static int mtk_eth_probe(struct udevice *dev)
 	/* Probe phy if switch is not specified */
 	if (priv->sw == SW_NONE)
 		//return mtk_phy_probe(dev);
-
+//
 	/* Initialize switch */
 	//return mt753x_switch_init(priv);
 	{
 		ret = mtk_phy_probe(dev);
 		//for intel gphy211 only
-		if (phy == 5)
-			priv->mmd_write(priv, 5, MDIO_MMD_VEND1, 8, 0x24e2);
-		if (phy == 6)
-			priv->mmd_write(priv, 6, MDIO_MMD_VEND1, 8, 0x24e2);
+		if (phy == 5 || phy == 6)
+			priv->mmd_write(priv, phy, MDIO_MMD_VEND1, 8, 0x24e2);
 	} else {
 		/* Initialize switch */
 		ret = mt753x_switch_init(priv);
@@ -1977,6 +2011,17 @@ static int mtk_eth_of_to_plat(struct udevice *dev)
 
 	priv->gmac_id = dev_read_u32_default(dev, "mediatek,gmac-id", 0);
 
+	priv->mdc = 0;
+	subnode = ofnode_find_subnode(dev_ofnode(dev), "mdio");
+	if (ofnode_valid(subnode)) {
+		priv->mdc = ofnode_read_u32_default(subnode, "clock-frequency", 2500000);
+		if (priv->mdc > MDC_MAX_FREQ ||
+		    priv->mdc < MDC_MAX_FREQ / MDC_MAX_DIVIDER) {
+			printf("error: MDIO clock frequency out of range\n");
+			return -EINVAL;
+		}
+	}
+
 	/* Interface mode is required */
 	pdata->phy_interface = dev_read_phy_mode(dev);
 	priv->phy_interface = pdata->phy_interface;
@@ -2020,7 +2065,9 @@ static int mtk_eth_of_to_plat(struct udevice *dev)
 			return -ENODEV;
 		}
 
-		priv->pn_swap = ofnode_read_bool(args.node, "pn_swap");
+		/* Upstream linux use mediatek,pnswap instead of pn_swap */
+		priv->pn_swap = ofnode_read_bool(args.node, "pn_swap") ||
+				ofnode_read_bool(args.node, "mediatek,pnswap");
 	} else if (priv->phy_interface == PHY_INTERFACE_MODE_USXGMII) {
 		/* get corresponding usxgmii phandle */
 		ret = dev_read_phandle_with_args(dev, "mediatek,usxgmiisys",

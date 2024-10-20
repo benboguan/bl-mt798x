@@ -9,6 +9,7 @@
 #include <command.h>
 #include <ansi.h>
 #include <efi_config.h>
+#include <efi_loader.h>
 #include <efi_variable.h>
 #include <env.h>
 #include <log.h>
@@ -89,6 +90,7 @@ static char *bootmenu_choice_entry(void *data)
 	struct bootmenu_data *menu = data;
 	struct bootmenu_entry *iter;
 	enum bootmenu_key key = BKEY_NONE;
+	int choice = -1;
 	int i;
 
 	cli_ch_init(cch);
@@ -96,10 +98,10 @@ static char *bootmenu_choice_entry(void *data)
 	while (1) {
 		if (menu->delay >= 0) {
 			/* Autoboot was not stopped */
-			key = bootmenu_autoboot_loop(menu, cch);
+			key = bootmenu_autoboot_loop(menu, cch, choice);
 		} else {
 			/* Some key was pressed, so autoboot was stopped */
-			key = bootmenu_loop(menu, cch);
+			key = bootmenu_loop(menu, cch, choice);
 		}
 
 		switch (key) {
@@ -115,6 +117,10 @@ static char *bootmenu_choice_entry(void *data)
 			return NULL;
 		case BKEY_CHOICE:
 			menu->active = cch->choice;
+			if (!menu->last_choiced) {
+				menu->last_choiced = true;
+				return NULL;
+			}
 		case BKEY_SELECT:
 			iter = menu->first;
 			for (i = 0; i < menu->active; ++i)
@@ -356,6 +362,7 @@ static struct bootmenu_data *bootmenu_create(int delay)
 	menu->delay = delay;
 	menu->active = 0;
 	menu->first = NULL;
+	menu->last_choiced = false;
 
 	default_str = env_get("bootmenu_default");
 	if (default_str)

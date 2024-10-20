@@ -824,6 +824,12 @@ static int do_nand(struct cmd_tbl *cmdtp, int flag, int argc,
 		return failed != 0;
 	}
 #endif
+#if defined(CONFIG_ASUS_PRODUCT)
+	if (strcmp(cmd, "restoredefault") == 0) {
+		reset_to_default();
+		return 0;
+	}
+#endif
 
 	if (strcmp(cmd, "markbad") == 0) {
 		argc -= 2;
@@ -964,6 +970,10 @@ static char nand_help_text[] =
 	"    first device.\n"
 	"nand env.oob set off|partition - set enviromnent offset\n"
 	"nand env.oob get - get environment offset"
+#endif
+#if defined(CONFIG_ASUS_PRODUCT)
+	"\n"
+	"nand restoredefault - clear ENV/nvram"
 #endif
 	"";
 #endif

@@ -201,6 +201,15 @@ static int mtk_hw_set_value(struct udevice *dev, int pin, int field,
 	return 0;
 }
 
+#if defined(CONFIG_ASUS_PRODUCT)
+static struct udevice *bk_dev = NULL;
+void bd_mtk_pin_mode(int pin, int mode)
+{
+	if (!bk_dev) return;
+	mtk_hw_set_value(bk_dev, pin, PINCTRL_PIN_REG_MODE, mode);
+}
+#endif
+
 static int mtk_hw_get_value(struct udevice *dev, int pin, int field,
 			    int *value)
 {
@@ -807,6 +816,9 @@ int mtk_pinctrl_common_probe(struct udevice *dev,
 #if CONFIG_IS_ENABLED(DM_GPIO) || \
     (defined(CONFIG_SPL_BUILD) && defined(CONFIG_SPL_GPIO))
 	ret = mtk_gpiochip_register(dev);
+#endif
+#if defined(CONFIG_ASUS_PRODUCT)
+	bk_dev = dev;
 #endif
 
 	return ret;

@@ -80,6 +80,9 @@ int arch_fsp_init(void);
 int arch_fsp_init_r(void);
 
 int dram_init(void);
+#if defined(CONFIG_ASUS_PRODUCT)
+void asus_gpio_init(void);
+#endif
 
 /**
  * dram_init_banksize() - Set up DRAM bank sizes
@@ -284,6 +287,7 @@ int cpu_init_r(void);
 int last_stage_init(void);
 int mac_read_from_eeprom(void);
 int set_cpu_clk_info(void);
+int reset_to_default(void);
 int update_flash_size(int flash_size);
 int arch_early_init_r(void);
 int misc_init_r(void);

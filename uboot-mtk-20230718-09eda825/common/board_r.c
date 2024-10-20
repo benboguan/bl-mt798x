@@ -67,13 +67,6 @@
 #include <efi_loader.h>
 #include <relocate.h>
 
-#if defined(CONFIG_ASUS_PRODUCT)
-#include <cli.h>
-#include <version.h>
-#include <gpio.h>
-#include <version_string.h>
-#endif
-
 DECLARE_GLOBAL_DATA_PTR;
 
 ulong monitor_flash_len;
@@ -559,14 +552,6 @@ int initr_mem(void)
 }
 #endif
 
-#if defined(CONFIG_ASUS_PRODUCT)
-static int led_gpio_init(void)
-{
-	asus_gpio_init();
-	return 0;
-}
-#endif
-
 static int dm_announce(void)
 {
 	int device_count;
@@ -604,15 +589,7 @@ static int run_main_loop(void)
 #endif
 
 	event_notify_null(EVT_MAIN_LOOP);
-#if defined(CONFIG_ASUS_PRODUCT)
-	/* Boot Loader Menu */
 
-	//LANWANPartition();	/* FIXME */
-	disable_all_leds();	/* Inhibit ALL LED, except PWR LED. */
-	/* Turn off LEDs later due to MT7531 LEDs keep ON during initialization. */
-	leds_off();
-	power_led_on();
-#endif
 	/* main_loop() can return to retry autoboot, if so just run it again */
 	for (;;)
 		main_loop();
@@ -790,9 +767,6 @@ static init_fnc_t init_sequence_r[] = {
 	initr_status_led,
 #endif
 	/* PPC has a udelay(20) here dating from 2002. Why? */
-#if defined(CONFIG_GPIO_HOG)
-	gpio_hog_probe_all,
-#endif
 #ifdef CONFIG_BOARD_LATE_INIT
 	board_late_init,
 #endif
@@ -805,9 +779,6 @@ static init_fnc_t init_sequence_r[] = {
 #endif
 #ifdef CONFIG_PCI_ENDPOINT
 	pci_ep_init,
-#endif
-#if defined(CONFIG_ASUS_PRODUCT)
-	led_gpio_init,
 #endif
 #ifdef CONFIG_CMD_NET
 	INIT_FUNC_WATCHDOG_RESET

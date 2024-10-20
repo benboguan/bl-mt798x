@@ -23,10 +23,6 @@ char *display_options_get_banner_priv(bool newlines, const char *build_tag,
 	if (build_tag && len < size)
 		len += snprintf(buf + len, size - len, ", Build: %s",
 				build_tag);
-#if defined(CONFIG_ASUS_PRODUCT)
-	len += snprintf(buf + len, size - len, "\n%s bootloader version: %c.%c.%c.%c",
-		model, blver[0], blver[1], blver[2], blver[3]);
-#endif
 	if (len > size - 3)
 		len = size - 3;
 	if (len < 0)

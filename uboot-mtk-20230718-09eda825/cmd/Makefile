@@ -251,8 +251,6 @@ obj-$(CONFIG_CMD_BCM_EXT_UTILS) += broadcom/
 
 obj-$(CONFIG_TI_COMMON_CMD_OPTIONS) += ti/
 
-obj-$(CONFIG_ASUS_PRODUCT) += asus_gpio.o
-
 filechk_data_gz = (echo "static const char data_gz[] ="; cat $< | scripts/bin2c; echo ";")
 
 filechk_data_size = \

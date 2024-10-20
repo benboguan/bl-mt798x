@@ -7,7 +7,6 @@
 /dts-v1/;
 #include "mt7981.dtsi"
 #include <dt-bindings/gpio/gpio.h>
-#include <dt-bindings/input/input.h>
 
 / {
 	#address-cells = <1>;
@@ -117,30 +116,23 @@
 	mdio: mdio-bus {
 		#address-cells = <1>;
 		#size-cells = <0>;
+		mediatek,switch = "gpy211";
 
-		phy5: ethernet-phy@5 {
+		phy5: eth-phy@5 {
+			/* MaxLinear GPY211C0VC (SLNW8) */
 			compatible = "ethernet-phy-id67c9.de0a";
-			reg = <0x5>;
-			reset-gpios = <&pio 7 GPIO_ACTIVE_LOW>;
+			/* GPY211 Address */
+			reg = <5>;
+			reset-gpios = <&gpio 7 GPIO_ACTIVE_LOW>;
 			reset-assert-us = <600>;
 			reset-deassert-us = <20000>;
 			phy-mode = "2500base-x";
-			maxlinear,led-drive-vdd;
-			maxlinear,led-reg = <0x3c0 0x330 0x0 0x0>;
 		};
 	};
-};
 
-&eth1 {
-	status = "okay";
-	mediatek,gmac-id = <1>;
-	mediatek,sgmiisys = <&sgmiisys1>;
-	phy-mode = "2500base-x";
-	phy-handle = <&phy6>;
-
-	phy6: ethernet-phy@6 {
-		compatible = "ethernet-phy-ieee802.3-c45";
-		reg = <0x0>;
+	fixed-link {
+		speed = <2500>;
+		full-duplex;
 	};
 };
 

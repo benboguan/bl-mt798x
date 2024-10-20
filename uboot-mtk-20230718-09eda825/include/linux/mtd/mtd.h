@@ -599,5 +599,4 @@ int mtd_search_alternate_name(const char *mtdname, char *altname,
 			      unsigned int max_len);
 
 #endif
-struct mtd_info *current_mtd(void);
 #endif /* __MTD_MTD_H__ */

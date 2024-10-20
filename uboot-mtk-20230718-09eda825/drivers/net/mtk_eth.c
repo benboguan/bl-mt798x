@@ -6,6 +6,7 @@
  * Author: Mark Lee <mark-mc.lee@mediatek.com>
  */
 
+#include <common.h>
 #include <cpu_func.h>
 #include <dm.h>
 #include <log.h>
@@ -35,6 +36,7 @@
 #define RX_TOTAL_BUF_SIZE	(NUM_RX_DESC * PKTSIZE_ALIGN)
 #define TOTAL_PKT_BUF_SIZE	(TX_TOTAL_BUF_SIZE + RX_TOTAL_BUF_SIZE)
 
+#define GPY211_DFL_SMI_ADDR	30
 #define MT753X_NUM_PHYS		5
 #define MT753X_NUM_PORTS	7
 #define MT753X_DFL_SMI_ADDR	31
@@ -79,7 +81,7 @@ enum mtk_switch {
 	SW_NONE,
 	SW_MT7530,
 	SW_MT7531,
-	SW_MT7988,
+	SW_MT7988
 };
 
 /* struct mtk_soc_data -	This is the structure holding all differences
@@ -182,16 +184,6 @@ static void mtk_gdma_write(struct mtk_eth_priv *priv, int no, u32 reg,
 		gdma_base = GDMA1_BASE;
 
 	writel(val, priv->fe_base + gdma_base + reg);
-}
-
-static u32 mtk_fe_read(struct mtk_eth_priv *priv, u32 reg)
-{
-	return readl(priv->fe_base + reg);
-}
-
-static void mtk_fe_write(struct mtk_eth_priv *priv, u32 reg, u32 val)
-{
-	writel(val, priv->fe_base + reg);
 }
 
 static void mtk_fe_rmw(struct mtk_eth_priv *priv, u32 reg, u32 clr, u32 set)
@@ -618,14 +610,20 @@ static int mt753x_core_reg_read(struct mtk_eth_priv *priv, u32 reg)
 {
 	u8 phy_addr = MT753X_PHY_ADDR(priv->mt753x_phy_base, 0);
 
-	return priv->mmd_read(priv, phy_addr, 0x1f, reg);
+	if (phy_addr)
+		return priv->mmd_read(priv, phy_addr, 0x1f, reg);
+	else
+		return priv->mmd_read(priv, phy_addr, 0x1e, reg);
 }
 
 static void mt753x_core_reg_write(struct mtk_eth_priv *priv, u32 reg, u32 val)
 {
 	u8 phy_addr = MT753X_PHY_ADDR(priv->mt753x_phy_base, 0);
 
-	priv->mmd_write(priv, phy_addr, 0x1f, reg, val);
+	if (phy_addr)
+		priv->mmd_write(priv, phy_addr, 0x1f, reg, val);
+	else
+		priv->mmd_write(priv, phy_addr, 0x1e, reg, val);
 }
 
 static int mt7530_pad_clk_setup(struct mtk_eth_priv *priv, int mode)
@@ -688,6 +686,9 @@ static int mt7530_pad_clk_setup(struct mtk_eth_priv *priv, int mode)
 	return 0;
 }
 
+extern void gpy211_force_onoff(int phy, int onoff);
+extern void mt7531_force_onoff(int onoff);
+
 static struct mtk_eth_priv *eth_priv[2] = { 0 };
 
 /* Force LED0 of GPY211 ON/OFF
@@ -701,21 +702,19 @@ void gpy211_force_onoff(int phy, int onoff)
 
 	if (!priv)
 		return;
-#if defined(TUFAX4200) || defined(TUFAX6000)
+
 	if (phy == 6)
 		inv = 1 << 12;	/* 2.5G WAN LED, active low */
 	else if (phy == 5)
 		inv = 0;	/* 2.5G LAN LED, active high */
 	else
 		return;
-#elif defined(PANTHERA) || defined(7981RXXX)
-	if (phy == 5 || phy == 6) {
-		inv = 0xF << 12;	/* Four LEDs */
+/*	if (phy == 5 || phy == 6) {
+		inv = 0xF << 12;	// Four LEDs
 		val = onoff? 0xF : 0;
 	}
 	else
-		return;
-#endif
+		return; */
 
 	priv->mmd_write(priv, phy, 0, 27, inv | val);
 }
@@ -732,19 +731,20 @@ void mt7531_force_onoff(int onoff)
 
 	if (onoff) {
 		/* Make sure LEDs are not controlled by LED_MODE,
-		 * force on link LED (LED0) and turn off activity LED (LED1).
+		 * force on link LED (LED0) and turn on activity LED (LED1).
 		 */
-		mt753x_core_reg_write(priv, 0x21, 0x8009);
-		mt753x_core_reg_write(priv, 0x24, 0x8040);
-		mt753x_core_reg_write(priv, 0x26, 0x0);
-	} else {
-		/* Use LED_MODE to control LEDs and disable all LEDs, clock must be sustain. */
 		mt753x_core_reg_write(priv, 0x21, 0x8009);
 		mt753x_core_reg_write(priv, 0x22, 0x0c00);
 		mt753x_core_reg_write(priv, 0x23, 0x1400);
-		mt753x_core_reg_write(priv, 0x24, 0xc007);
-		mt753x_core_reg_write(priv, 0x25, 0x0);
+		mt753x_core_reg_write(priv, 0x24, 0xc003);
+		mt753x_core_reg_write(priv, 0x25, 0x3f);
 		mt753x_core_reg_write(priv, 0x26, 0xc007);
+		mt753x_core_reg_write(priv, 0x27, 0x0);
+	} else {
+		/* Use LED_MODE to control LEDs and disable all LEDs, clock must be sustain. */
+		mt753x_core_reg_write(priv, 0x21, 0x8);
+		mt753x_core_reg_write(priv, 0x24, 0x8040);
+		mt753x_core_reg_write(priv, 0x26, 0x0);
 	}
 }
 
@@ -1024,6 +1024,7 @@ static int mt7531_setup(struct mtk_eth_priv *priv)
 		if (!port5_sgmii)
 			mt7531_port_rgmii_init(priv, 5);
 		break;
+	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_2500BASEX:
 		mt7531_port_sgmii_init(priv, 6);
 		if (port5_sgmii)
@@ -1338,6 +1339,10 @@ static int mtk_phy_probe(struct udevice *dev)
 			     priv->phy_interface);
 	if (!phydev)
 		return -ENODEV;
+
+	int sgmii_reg __attribute__((unused)) = phy_read_mmd(phydev, MDIO_MMD_VEND1, 8);
+	/* enable 2.5G SGMII rate adaption */
+	phy_write_mmd(phydev, MDIO_MMD_VEND1, 8, 0x24e2);
 
 	phydev->supported &= PHY_GBIT_FEATURES;
 	phydev->advertising = phydev->supported;
@@ -1925,9 +1930,12 @@ static int mtk_eth_probe(struct udevice *dev)
 		//for intel gphy211 only
 		if (phy == 5 || phy == 6)
 			priv->mmd_write(priv, phy, MDIO_MMD_VEND1, 8, 0x24e2);
+		else
+			priv->mmd_write(priv, 0, MDIO_MMD_VEND1, 8, 0xa4fa);
 	} else {
 		/* Initialize switch */
 		ret = mt753x_switch_init(priv);
+		//phy_write_mmd(priv, MDIO_MMD_VEND1, 8, 0x24e2);
 	}
 
 	if (priv->gmac_id >= 0 && priv->gmac_id < ARRAY_SIZE(eth_priv)) {
@@ -2135,6 +2143,12 @@ static int mtk_eth_of_to_plat(struct udevice *dev)
 			priv->switch_mac_control = mt7988_mac_control;
 			priv->mt753x_smi_addr = MT753X_DFL_SMI_ADDR;
 			priv->mt753x_reset_wait_time = 50;
+		} else if (!strcmp(str, "gpy211")) {
+			priv->sw = SW_NONE;
+			priv->switch_init = mt7531_setup;
+			priv->switch_mac_control = mt7531_mac_control;
+			priv->mt753x_smi_addr = GPY211_DFL_SMI_ADDR;
+			priv->mt753x_reset_wait_time = 600;
 		} else {
 			printf("error: unsupported switch\n");
 			return -EINVAL;

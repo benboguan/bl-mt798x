@@ -481,9 +481,6 @@ const char *bootdelay_process(void)
 	else
 		s = env_get("bootcmd");
 
-#if defined(CONFIG_ASUS_PRODUCT)
-	bootdelay = -1;
-#endif
 	if (IS_ENABLED(CONFIG_OF_CONTROL))
 		process_fdt_options();
 	stored_bootdelay = bootdelay;

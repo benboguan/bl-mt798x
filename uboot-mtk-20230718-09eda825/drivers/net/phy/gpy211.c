@@ -217,7 +217,7 @@ static int gpy211_phy_config(struct phy_device *phydev)
 static int gpy211_probe(struct phy_device *phydev)
 {
 	int i;
-	int sgmii_reg = phy_read_mmd(phydev, MDIO_MMD_VEND1, 8);
+	int sgmii_reg __attribute__((unused)) = phy_read_mmd(phydev, MDIO_MMD_VEND1, 8);
 	struct gpy_priv *priv;
 	int fw_version;
 	int buf = 0;
@@ -254,6 +254,15 @@ static int gpy211_probe(struct phy_device *phydev)
 	/* enable 2.5G SGMII rate adaption */
 	//phy_write_mmd(phydev, MDIO_MMD_VEND1, 8, 0xa4fa);
 	phy_write_mmd(phydev, MDIO_MMD_VEND1, 8, 0x24e2);
+	if (phydev->addr == 5) {
+		/* 2.5G LAN */
+		phy_write_mmd(phydev, 0, 0x1B, 0x1000);	/* disable LED function and turn off LED */
+		phy_write_mmd(phydev, 0x7, 0x3c, 0x0);	/* disable 100M/1000M EEE advertisement  */
+	} else if (phydev->addr == 6) {
+		/* 2.5G WAN, active low */
+		phy_write_mmd(phydev, 0, 0x1B, 0x0000);	/* disable LED function and turn off LED */
+		phy_write_mmd(phydev, 0x7, 0x3c, 0x0);	/* disable 100M/1000M EEE advertisement  */
+	}
 
 	buf = phy_read_mmd(phydev, MDIO_MMD_VEND1, VSPEC1_NBT_DS_CTRL);
 	/* enable downshift and set training counter threshold to 3 */
@@ -427,10 +436,6 @@ static int gpy211_read_status(struct phy_device *phydev)
 static int gpy211_startup(struct phy_device *phydev)
 {
     int ret;
-
-	ret = genphy_update_link(phydev);
-	if (ret)
-		return ret;
 
 	ret = genphy_parse_link(phydev);
 	if (ret)

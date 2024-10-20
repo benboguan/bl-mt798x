@@ -18,6 +18,10 @@ OBJCOPYFLAGS :=
 # clear VENDOR for tcsh
 VENDOR :=
 #########################################################################
+ifneq ($(CONFIG_MODEL),)
+MODEL = $(subst -,,$(CONFIG_MODEL))
+endif
+#########################################################################
 
 ARCH := $(CONFIG_SYS_ARCH:"%"=%)
 CPU := $(CONFIG_SYS_CPU:"%"=%)

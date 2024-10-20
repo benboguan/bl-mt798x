@@ -70,17 +70,11 @@
 #if defined(CONFIG_ASUS_PRODUCT)
 #include <cli.h>
 #include <version.h>
-#include <flash_wrapper.h>
 #include <gpio.h>
 #include <replace.h>
-#include <flash_wrapper.h>
-#include <cmd_tftpServer.h>
 #include <version_string.h>
 #define BOOT_IMAGE_NAME "Boot Loader code"
 #define SYS_IMAGE_NAME  "System code"
-#if defined(CONFIG_PWM_MTK_MM)
-void bbtype(int);
-#endif
 #endif
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -88,8 +82,6 @@ DECLARE_GLOBAL_DATA_PTR;
 #if defined(CONFIG_ASUS_PRODUCT)
 extern int do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]);
 extern int do_reset(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]);
-extern int do_tftpb(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]);
-extern int do_tftpd(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]);
 extern int do_source (cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]);
 
 #define BOOTFILENAME	"u-boot_" CFG_FLASH_TYPE ".bin"
@@ -906,9 +898,6 @@ static void handle_boottype_2(void)
 #endif
 	}
 	getHWID();
-#if defined(CONFIG_PWM_MTK_MM)
-	bbtype(1);
-#endif
 
 	argc= 2;
 	sprintf(addr_str, "0x%lX#config-1", load_address+sizeof(image_header_t));
@@ -1212,7 +1201,7 @@ static int run_main_loop(void)
 
 	//LANWANPartition();	/* FIXME */
 	disable_all_leds();	/* Inhibit ALL LED, except PWR LED. */
-#if !defined(TUFAX4200) && !defined(TUFAX6000) && !defined(PANTHERA) || defined(7981RXXX)
+#if !defined(TUFAX4200) && !defined(TUFAX6000) && !defined(PANTHERA) && !defined(7981RXXX)
 	leds_off();
 	power_led_on();
 #endif

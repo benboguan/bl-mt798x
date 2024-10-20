@@ -90,7 +90,6 @@ static char *bootmenu_choice_entry(void *data)
 	struct bootmenu_data *menu = data;
 	struct bootmenu_entry *iter;
 	enum bootmenu_key key = BKEY_NONE;
-	int choice = -1;
 	int i;
 
 	cli_ch_init(cch);
@@ -98,10 +97,10 @@ static char *bootmenu_choice_entry(void *data)
 	while (1) {
 		if (menu->delay >= 0) {
 			/* Autoboot was not stopped */
-			key = bootmenu_autoboot_loop(menu, cch, choice);
+			key = bootmenu_autoboot_loop(menu, cch);
 		} else {
 			/* Some key was pressed, so autoboot was stopped */
-			key = bootmenu_loop(menu, cch, choice);
+			key = bootmenu_loop(menu, cch);
 		}
 
 		switch (key) {

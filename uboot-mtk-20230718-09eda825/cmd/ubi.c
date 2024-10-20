@@ -497,7 +497,7 @@ int ubi_volume_write(char *volume, void *buf, size_t size)
 	return ubi_volume_begin_write(volume, buf, size, size);
 }
 
-int ubi_volume_read(char *volume, char *buf, size_t size, size_t offset)
+static int __ubi_volume_read(char *volume, char *buf, size_t size, size_t offset)
 {
 	int err, lnum, off, len, tbuf_size;
 	void *tbuf;

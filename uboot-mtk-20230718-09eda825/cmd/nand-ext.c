@@ -13,15 +13,6 @@
 #include <linux/types.h>
 #include <linux/mtd/mtd.h>
 
-#if defined(CONFIG_ASUS_PRODUCT)
-#include <init.h>
-//#define TEST_CMD
-#ifdef TEST_CMD
-#include <flash_wrapper.h>
-#include <net.h>
-#endif
-#endif
-
 static struct mtd_info *curr_dev;
 
 static void mtd_show_parts(struct mtd_info *mtd, int level)
@@ -190,57 +181,6 @@ static int do_nand_info(struct cmd_tbl *cmdtp, int flag, int argc,
 	return 0;
 }
 
-#if defined(CONFIG_ASUS_PRODUCT)
-static int do_reset_default(struct cmd_tbl *cmdtp, int flag, int argc,
-			 char *const argv[])
-{
-	reset_to_default();
-	return 0;
-}
-
-#include <ubi_uboot.h>
-void clear_spinand(void);
-extern struct udevice *gl_flash_udev;
-static int do_reprobe(struct cmd_tbl *cmdtp, int flag, int argc,
-			 char *const argv[])
-{
-	char *ubi_detach[] = { "ubi", "detach"};
-	do_ubi(NULL, 0, ARRAY_SIZE(ubi_detach), ubi_detach);
-	clear_spinand();
-	curr_dev=NULL;
-	if (gl_flash_udev && gl_flash_udev->driver)
-		gl_flash_udev->driver->probe(gl_flash_udev);
-	return 0;
-}
-#ifdef TEST_CMD
-static int do_d1(struct cmd_tbl *cmdtp, int flag, int argc,
-			 char *const argv[])
-{
-	/* destroy linux 1MB size */
-	memset((uchar *)CONFIG_SYS_LOAD_ADDR, 0xff, 0x100000);
-	ra_flash_erase_write((uchar *)CONFIG_SYS_LOAD_ADDR, CFG_KERN_ADDR, 0x100000, 0);
-	return 0;
-}
-
-static int do_d2(struct cmd_tbl *cmdtp, int flag, int argc,
-			 char *const argv[])
-{
-	/* destroy linux2 1MB size */
-	memset((uchar *)CONFIG_SYS_LOAD_ADDR, 0xff, 0x100000);
-	ra_flash_erase_write((uchar *)CONFIG_SYS_LOAD_ADDR, CFG_KERN2_ADDR, 0x100000, 0);
-	return 0;
-}
-
-static int do_rescue(struct cmd_tbl *cmdtp, int flag, int argc,
-			 char *const argv[])
-{
-	printf(" \nHello!! Enter Recuse Mode: (Check error)\n\n");
-	if (net_loop(TFTPD) < 0)
-		return -1;
-	return 0;
-}
-#endif
-#endif
 static int do_nand_select(struct cmd_tbl *cmdtp, int flag, int argc,
 			   char *const argv[])
 {
@@ -380,7 +320,7 @@ static int do_nand_dump(struct cmd_tbl *cmdtp, int flag, int argc,
 		return CMD_RET_FAILURE;
 	}
 
-	printf("Dump of %spage at 0x%llx (page %llx):\n", raw ? "raw " : "", off, off >> mtd->writesize_shift);
+	printf("Dump of %spage at 0x%llx:\n", raw ? "raw " : "", off);
 	dump_buf(buf, mtd->writesize, off);
 
 	printf("\n");
@@ -560,169 +500,6 @@ static int do_nand_bitflip(struct cmd_tbl *cmdtp, int flag, int argc,
 	printf("Failed to change bit %u at byte %u to 0\n", bit, col);
 	return CMD_RET_FAILURE;
 }
-
-#if defined(DEBUG_ECC_CORRECTION)
-static int raw_access(struct mtd_info *mtd, ulong addr, loff_t off, ulong count, int read)
-{
-	int ret;
-	struct mtd_oob_ops io_op = {};
-
-	if (!mtd || !addr || !count)
-		return CMD_RET_FAILURE;
-
-	off &= ~(u64)mtd->writesize_mask;
-	for (; count > 0 && off < mtd->size;
-	     --count, off += mtd->writesize, addr += mtd->writesize + mtd->oobsize)
-	{
-		io_op.mode = MTD_OPS_RAW;
-		io_op.len = mtd->writesize;
-		io_op.datbuf = (u8*) addr;
-		io_op.ooblen = mtd->oobsize;
-		io_op.oobbuf = (u8*) (addr + mtd->writesize);
-
-		ret = mtd_read_oob(mtd, off, &io_op);
-		if (ret < 0 && ret != -EUCLEAN && ret != -EBADMSG) {
-			printf("Failed to read page at 0x%llx, err %d\n", off, ret);
-			return CMD_RET_FAILURE;
-		}
-
-	}
-	return count? CMD_RET_FAILURE : CMD_RET_SUCCESS;
-}
-
-static int do_nand_flipbits(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
-{
-	/* nand flipbits <page_number> byte_addr:bit_addr[,bit_addr][,bit_addr...]
-	 * [byte_addr:bit_addr[,bit_addr][,bit_addr...]
-	 * [byte_addr:bit_addr[,bit_addr][,bit_addr...]
-	 * [byte_addr:bit_addr[,bit_addr][,bit_addr...]
-	 * Up to 4 bytes can be alerted.
-	 */
-	struct mtd_info *mtd = nand_get_curr_dev();
-	const int pages_per_block = mtd->erasesize / mtd->writesize;
-	struct mtd_oob_ops ops;
-	int i, mod_cnt = 0, ret, cnt;
-	ulong off;
-	struct mod_s {
-		unsigned int byte_addr;
-		unsigned int bit_mask;
-	} mod_ary[4], *mod = &mod_ary[0];
-	unsigned int block, page, start_page, byte_addr, bit;
-	char *q;
-	unsigned char c, *p;
-	unsigned char blk_buf[mtd->erasesize + pages_per_block * mtd->oobsize]  __attribute__ ((aligned(4)));
-	struct erase_info ei;
-	uint32_t erasesize_shift = ffs(mtd->erasesize) - 1;
-	uint32_t writesize_shift = ffs(mtd->writesize) - 1;
-
-	if (argc < 3)
-		return 1;
-	if (!mtd->_erase || !mtd->_write_oob) {
-		printf("Invalid mtd->_erase %p or mtd->_write_oob %p\n", mtd->_erase, mtd->_write_oob);
-		return 1;
-	}
-
-	page = simple_strtoul(argv[1], NULL, 16);
-	if (page * mtd->writesize >= mtd->size) {
-		printf("invalid page 0x%x\n", page);
-		return 1;
-	}
-	start_page = page & ~(pages_per_block - 1);
-	printf("erasesize_shift %d writesize_shift %d\n", erasesize_shift, writesize_shift);
-	block = start_page >> (erasesize_shift - writesize_shift);
-	printf("page 0x%x start_page 0x%x block 0x%x\n", page, start_page, block);
-
-	/* parsing byte address, bit address */
-	for (i = 2; i < argc; ++i) {
-		if ((q = strchr(argv[i], ':')) == NULL) {
-			printf("colon symbol not found.\n");
-			return 1;
-		}
-
-		*q = '\0';
-		byte_addr = simple_strtoul(argv[i], NULL, 16);
-		if (byte_addr >= (2048 + 64)) {
-			printf("invalid byte address 0x%x\n", byte_addr);
-			return 1;
-		}
-		mod->byte_addr = byte_addr;
-		mod->bit_mask = 0;
-
-		q++;
-		while (q && *q != '\0') {
-			if (*q < '0' || *q > '9') {
-				printf("invalid character. (%c %x)\n", *q, *q);
-				return 1;
-			}
-			bit = simple_strtoul(q, NULL, 16);
-			if (bit >= 8) {
-				printf("invalid bit address %d\n", bit);
-				return 1;
-			}
-			mod->bit_mask |= (1 << bit);
-			q = strchr(q, ',');
-			if (q)
-				q++;
-		}
-		mod_cnt++;
-		mod++;
-	}
-
-	if (!mod_cnt) {
-		printf("byte address/bit address pair is not specified.\n");
-		return 1;
-	}
-
-	/* read a block from block-aligned address with valid OOB information */
-	for (i = 0, cnt = 0, p = &blk_buf[0], off = start_page << writesize_shift;
-	     i < pages_per_block;
-	     ++i, p += mtd->writesize + mtd->oobsize, off += mtd->writesize)
-	{
-		if ((ret = raw_access(mtd, (ulong) p, off, 1, 1)) < 0)
-			printf("read page 0x%x fail. (ret %d)\n", start_page + i, ret);
-		else
-			cnt++;
-	}
-
-	if (cnt != pages_per_block)
-		return 1;
-
-	/* erase block */
-	memset(&ei, 0, sizeof(ei));
-	ei.mtd = mtd;
-	ei.addr = block << erasesize_shift;
-	ei.len = mtd->erasesize;
-	if ((ret = mtd->_erase(mtd, &ei)) != 0) {
-		printf("Erase addr %x len %x fail. (ret %d)\n",
-			(unsigned int) ei.addr, (unsigned int)ei.len, ret);
-		return CMD_RET_FAILURE;
-	}
-
-	/* flip bits */
-	p = &blk_buf[0] + ((page - start_page) << writesize_shift) + ((page - start_page) * mtd->oobsize);
-	for (i = 0, mod = &mod_ary[0]; i < mod_cnt; ++i, ++mod) {
-		c = *(p + mod->byte_addr);
-		*(p + mod->byte_addr) ^= mod->bit_mask;
-		printf("flip page 0x%x byte 0x%x bitmask 0x%x: orig val %02x -> %02x\n",
-			page, mod->byte_addr, mod->bit_mask, c, *(p + mod->byte_addr));
-	}
-
-	/* use raw write to write back page and oob information */
-	for (i = 0, p = &blk_buf[0]; i < pages_per_block; ++i) {
-		memset(&ops, 0, sizeof(ops));
-		ops.datbuf = p;
-		ops.len = mtd->writesize;
-		ops.oobbuf = p + mtd->writesize;
-		ops.ooblen = mtd->oobsize;
-		ops.mode =  MTD_OPS_RAW;
-		if ((ret = mtd->_write_oob(mtd, (start_page + i) << writesize_shift, &ops)) != 0)
-			printf("write page 0x%x fail. (ret %d)\n", start_page + i, ret);
-
-		p += mtd->writesize + mtd->oobsize;
-	}
-	return CMD_RET_SUCCESS;
-}
-#endif
 
 static int do_nand_erase(struct cmd_tbl *cmdtp, int flag, int argc,
 			  char *const argv[])
@@ -1254,27 +1031,11 @@ static char nand_help_text[] =
 	"- NAND flash R/W and debugging utility\n"
 	"nand list\n"
 	"nand info - Show active NAND devices\n"
-#if defined(CONFIG_ASUS_PRODUCT)
-	"nand restoredefault - clear ENV/nvram\n"
-	"nand reprobe\n"
-#ifdef TEST_CMD
-	"nand d1\n"
-	"nand d2\n"
-	"nand rescue\n"
-#endif
-#endif
 	"nand select <name> - Select active NAND devices\n"
 	"nand dump[.raw] <off>\n"
 	"nand bad\n"
 	"nand markbad <off>\n"
 	"nand bitflip <off> <col> <bit>\n"
-#if defined(DEBUG_ECC_CORRECTION)
-	"nand flipbits <page_number> \n"
-	"    byte_addr:bit_addr[,bit_addr][,bit_addr...]\n"
-	"    [byte_addr:bit_addr[,bit_addr][,bit_addr...]\n"
-	"    [byte_addr:bit_addr[,bit_addr][,bit_addr...]\n"
-	"    [byte_addr:bit_addr[,bit_addr][,bit_addr...]\n"
-#endif
 	"nand erase[.spread|.force] [<off> <size>|<part> [<size>]]\n"
 	"nand read[.spread|.force][.raw] <addr> <off> <size>\n"
 	"                                <addr> <part> [<off> [<size>]]\n"
@@ -1290,23 +1051,11 @@ U_BOOT_CMD_WITH_SUBCMDS(nand, "NAND utility",
 	nand_help_text,
 	U_BOOT_SUBCMD_MKENT(list, 1, 0, do_nand_list),
 	U_BOOT_SUBCMD_MKENT(info, 1, 0, do_nand_info),
-#if defined(CONFIG_ASUS_PRODUCT)
-	U_BOOT_SUBCMD_MKENT(restoredefault, 1, 0, do_reset_default),
-	U_BOOT_SUBCMD_MKENT(reprobe, 1, 0, do_reprobe),
-#ifdef TEST_CMD
-	U_BOOT_SUBCMD_MKENT(d1, 1, 0, do_d1),
-	U_BOOT_SUBCMD_MKENT(d2, 1, 0, do_d2),
-	U_BOOT_SUBCMD_MKENT(rescue, 1, 0, do_rescue),
-#endif
-#endif
 	U_BOOT_SUBCMD_MKENT(select, 2, 0, do_nand_select),
 	U_BOOT_SUBCMD_MKENT(dump, 2, 0, do_nand_dump),
 	U_BOOT_SUBCMD_MKENT(bad, 1, 0, do_nand_bad),
 	U_BOOT_SUBCMD_MKENT(markbad, 2, 0, do_nand_markbad),
 	U_BOOT_SUBCMD_MKENT(bitflip, 4, 0, do_nand_bitflip),
-#if defined(DEBUG_ECC_CORRECTION)
-	U_BOOT_SUBCMD_MKENT(flipbits, 6, 0, do_nand_flipbits),
-#endif
 	U_BOOT_SUBCMD_MKENT(erase, 3, 0, do_nand_erase),
 	U_BOOT_SUBCMD_MKENT(read, 5, 0, do_nand_io),
 	U_BOOT_SUBCMD_MKENT(write, 5, 0, do_nand_io)

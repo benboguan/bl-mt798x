@@ -253,7 +253,7 @@
 		#reset-cells = <1>;
 	};
 
-	eth0: ethernet0@15100000 {
+	eth1: ethernet1@15100000 {
 		compatible = "mediatek,mt7981-eth", "syscon";
 		reg = <0x15100000 0x80000>;
 		resets = <&ethsys ETHSYS_FE_RST>;

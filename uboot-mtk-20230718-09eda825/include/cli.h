@@ -81,7 +81,8 @@ int cli_simple_run_command_list(char *cmd, int flag);
  * @prompt: Prompt to display
  * Return: command line length excluding terminator, or -ve on error
  */
-int cli_readline(const char *const prompt);
+int __cli_readline(const char *const prompt, int show_buf);
+static inline int cli_readline(const char *const prompt) { return __cli_readline(prompt, 0); }
 
 /**
  * readline_into_buffer() - read a line into a buffer
@@ -106,8 +107,12 @@ int cli_readline(const char *const prompt);
  * parameter), then -2 is returned. If a break is detected (Ctrl-C) then
  * -1 is returned.
  */
-int cli_readline_into_buffer(const char *const prompt, char *buffer,
-				int timeout);
+int __cli_readline_into_buffer(const char *const prompt, char *buffer,
+				int timeout, int show_buf);
+static inline int cli_readline_into_buffer(const char *const prompt, char *buffer, int timeout)
+{
+	return __cli_readline_into_buffer(prompt, buffer, timeout, 0);
+}
 
 /**
  * parse_line() - split a command line down into separate arguments

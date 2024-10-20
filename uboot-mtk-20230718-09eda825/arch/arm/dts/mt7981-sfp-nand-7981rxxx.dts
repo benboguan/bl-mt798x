@@ -114,26 +114,33 @@
 	mediatek,switch = "mt7531";
 	reset-gpios = <&gpio 39 GPIO_ACTIVE_HIGH>;
 
-	fixed-link {
-		speed = <2500>;
-		full-duplex;
-		pause;
+	mdio: mdio-bus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		phy5: ethernet-phy@5 {
+			compatible = "ethernet-phy-id67c9.de0a";
+			reg = <0x5>;
+			reset-gpios = <&pio 7 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <600>;
+			reset-deassert-us = <20000>;
+			phy-mode = "2500base-x";
+			maxlinear,led-drive-vdd;
+			maxlinear,led-reg = <0x3c0 0x330 0x0 0x0>;
+		};
 	};
 };
 
-&eth0 {
+&eth1 {
 	status = "okay";
 	mediatek,gmac-id = <1>;
 	mediatek,sgmiisys = <&sgmiisys1>;
 	phy-mode = "2500base-x";
-	phy-handle = <&phy5>;
+	phy-handle = <&phy6>;
 
-	phy5: eth-phy@5 {
-		compatible = "ethernet-phy-id67c9.de0a";
-		reg = <5>;
-		reset-gpios = <&gpio 7 GPIO_ACTIVE_LOW>;
-		reset-assert-us = <600>;
-		reset-deassert-us = <20000>;
+	phy6: ethernet-phy@6 {
+		compatible = "ethernet-phy-ieee802.3-c45";
+		reg = <0x0>;
 	};
 };
 

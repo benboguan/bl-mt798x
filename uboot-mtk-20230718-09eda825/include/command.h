@@ -55,6 +55,7 @@ struct cmd_tbl {
 				    char last_char, int maxv, char *cmdv[]);
 #endif
 };
+typedef struct cmd_tbl	cmd_tbl_t;
 
 #if defined(CONFIG_CMD_RUN)
 int do_run(struct cmd_tbl *cmdtp, int flag, int argc,

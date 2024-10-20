@@ -23,6 +23,10 @@
 #include <net/sntp.h>
 #include <net/ncsi.h>
 
+#if defined(CONFIG_ASUS_PRODUCT)
+extern int modifies;
+#endif
+
 static int netboot_common(enum proto_t, struct cmd_tbl *, int, char * const []);
 
 #ifdef CONFIG_CMD_BOOTP
@@ -365,6 +369,10 @@ static int parse_args(enum proto_t proto, int argc, char *const argv[])
 			copy_filename(net_boot_file_name, argv[2],
 				      sizeof(net_boot_file_name));
 		}
+#if defined(CONFIG_ASUS_PRODUCT)
+		debug("load addr= 0x%08lx\n", image_load_addr);
+		debug("boot file= %s\n", net_boot_file_name);
+#endif
 		break;
 
 #ifdef CONFIG_CMD_TFTPPUT
@@ -376,6 +384,16 @@ static int parse_args(enum proto_t proto, int argc, char *const argv[])
 			      sizeof(net_boot_file_name));
 		break;
 #endif
+
+#if defined(CONFIG_ASUS_PRODUCT)
+	case 5:
+		image_load_addr = simple_strtoul(argv[1], NULL, 16);
+		copy_filename (net_boot_file_name, argv[2], sizeof(net_boot_file_name));
+		debug("load addr= 0x%08lx\n", image_load_addr);
+		debug("boot file= %s\n", net_boot_file_name);
+		break;
+#endif
+
 	default:
 		return 1;
 	}
@@ -445,6 +463,15 @@ static int netboot_common(enum proto_t proto, struct cmd_tbl *cmdtp, int argc,
 	}
 
 	bootstage_mark(BOOTSTAGE_ID_NET_LOADED);
+
+#if defined(CONFIG_ASUS_PRODUCT)
+	if ((argc == 5) && (modifies < 1)) {
+#ifdef CONFIG_CMD_SAVEENV
+		printf("# save env parameters...#\n");
+		env_save();
+#endif
+	}
+#endif	/* CONFIG_ASUS_PRODUCT */
 
 	rcode = bootm_maybe_autostart(cmdtp, argv[0]);
 

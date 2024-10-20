@@ -43,6 +43,7 @@ struct bootmenu_data {
 	int active;			/* active menu entry */
 	int count;			/* total count of menu entries */
 	struct bootmenu_entry *first;	/* first menu entry */
+	bool last_choiced;
 };
 
 /** enum bootmenu_key - keys that can be returned by the bootmenu */

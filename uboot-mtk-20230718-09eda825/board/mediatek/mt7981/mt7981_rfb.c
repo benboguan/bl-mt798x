@@ -7,6 +7,16 @@
 #include <asm/io.h>
 #include <linux/libfdt.h>
 
+#if defined(CONFIG_ASUS_PRODUCT)
+#include <gpio.h>
+#include <common.h>
+#endif
+
+#if defined(CONFIG_ASUS_PRODUCT)
+const char *model = CONFIG_MODEL;
+const char *bl_stage = "";
+#endif
+
 int board_init(void)
 {
 	return 0;

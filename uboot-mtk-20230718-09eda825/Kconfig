@@ -38,7 +38,6 @@ config ASUS_PRODUCT
 	bool "ASUS Product"
 	default n
 
-
 config LOCALVERSION
 	string "Local version - append to U-Boot release"
 	help

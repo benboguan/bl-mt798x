@@ -1027,8 +1027,10 @@ static int mt7531_setup(struct mtk_eth_priv *priv)
 	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_2500BASEX:
 		mt7531_port_sgmii_init(priv, 6);
-		if (port5_sgmii)
+		if (port5_sgmii) {
 			mt7531_port_sgmii_init(priv, 5);
+			priv->mmd_write(priv, phy_addr, 0x1e, 0x8, 0x24e2);
+		}
 		break;
 	default:
 		break;
@@ -1882,7 +1884,7 @@ static int mtk_eth_probe(struct udevice *dev)
 	struct eth_pdata *pdata = dev_get_plat(dev);
 	struct mtk_eth_priv *priv = dev_get_priv(dev);
 	ulong iobase = pdata->iobase;
-	int ret, phy;
+	int ret;
 
 	/* Frame Engine Register Base */
 	priv->fe_base = (void *)iobase;
@@ -1909,7 +1911,7 @@ static int mtk_eth_probe(struct udevice *dev)
 	if (priv->sw == SW_NONE)
 	{	//reset phy
 		dm_gpio_set_value(&priv->rst_gpio, 1);
-		mdelay(20);
+		mdelay(1000);
 	}
 
 	/* Set MAC mode */
@@ -1928,10 +1930,12 @@ static int mtk_eth_probe(struct udevice *dev)
 	{
 		ret = mtk_phy_probe(dev);
 		//for intel gphy211 only
-		if (phy == 5 || phy == 6)
-			priv->mmd_write(priv, phy, MDIO_MMD_VEND1, 8, 0x24e2);
-		else
-			priv->mmd_write(priv, 0, MDIO_MMD_VEND1, 8, 0xa4fa);
+		priv->mmd_write(priv, priv->phy_addr, MDIO_MMD_VEND1, 8, 0x24e2);
+
+		// for RTL8221B only
+		priv->mmd_write(priv, priv->phy_addr, MDIO_MMD_VEND1, 0x75f3, 0x30c);
+		priv->mmd_write(priv, priv->phy_addr, MDIO_MMD_VEND1, 0x697a, 0x2);
+		priv->mmd_write(priv, priv->phy_addr, MDIO_MMD_AN, 0x0, 0x3200);
 	} else {
 		/* Initialize switch */
 		ret = mt753x_switch_init(priv);

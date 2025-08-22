@@ -45,6 +45,8 @@
 
 #define GPT_PRIMARY_PARTITION_ENTRY_LBA 2ULL
 
+#define PART_PRODUCTION_NAME	"production"
+
 struct mmc_image_read_priv {
 	struct image_read_priv p;
 	struct mmc *mmc;
@@ -767,8 +769,8 @@ static int mmc_set_fdtargs_basic(struct mmc *mmc)
 	ulong len;
 	int ret;
 
-#if defined(CONFIG_ENV_MMC_PARTITION)
-	env_part_name = CONFIG_ENV_MMC_PARTITION;
+#if defined(CONFIG_ENV_MMC_SW_PARTITION)
+	env_part_name = CONFIG_ENV_MMC_SW_PARTITION;
 #else
 	env_part_name = ofnode_conf_read_str("u-boot,mmc-env-partition");
 #endif
@@ -854,7 +856,7 @@ static int _boot_from_mmc(struct mmc *mmc, u64 offset, bool do_boot)
 		if (ret)
 			return ret;
 
-		itb_size = itb_image_size((const void *)data_load_addr);
+		itb_size = fit_get_totalsize((const void *)data_load_addr);
 		if (itb_size > size) {
 			ret = _mmc_read(mmc, offset + size,
 					(void *)(data_load_addr + size),
@@ -1214,11 +1216,11 @@ int mmc_boot_image(u32 dev, bool do_boot)
 		return mmc_dual_boot(dev, do_boot);
 
 	if (strcmp(CONFIG_MTK_DEFAULT_FIT_BOOT_CONF, "")) {
-		part_primary = PART_FIRMWARE_NAME;
+		part_primary = PART_PRODUCTION_NAME;
 		part_secondary = PART_KERNEL_NAME;
 	} else {
 		part_primary = PART_KERNEL_NAME;
-		part_secondary = PART_FIRMWARE_NAME;
+		part_secondary = PART_PRODUCTION_NAME;
 	}
 
 	ret = boot_from_mmc_partition(dev, 0, part_primary, do_boot);
@@ -1336,7 +1338,7 @@ static int mmc_upgrade_image_itb(u32 dev, const void *data, size_t size,
 
 			do_dual_boot_post = true;
 		} else {
-			part = PART_FIRMWARE_NAME;
+			part = PART_PRODUCTION_NAME;
 		}
 	}
 
@@ -1426,7 +1428,7 @@ int mmc_upgrade_image_cust(u32 dev, const void *data, size_t size,
 	if (ret)
 		return ret;
 
-	if (ii.type == IMAGE_ITB)
+	if (ii.header_type == HEADER_FIT)
 		return mmc_upgrade_image_itb(dev, data, size, kernel_part);
 
 	if (IS_ENABLED(CONFIG_MTK_DUAL_BOOT_ITB_IMAGE) ||

@@ -8,6 +8,7 @@
  */
 
 #include <env.h>
+#include <exports.h>
 #include <errno.h>
 #include <image.h>
 #include <memalign.h>
@@ -30,6 +31,7 @@
 #include "rootdisk.h"
 #include "untar.h"
 
+#define PART_FIT_NAME		"fit"
 #define PART_UBI_NAME		"ubi"
 
 #define UBI_MOUNT_RECREATE	(!IS_ENABLED(CONFIG_MTK_DUAL_BOOT) && \
@@ -569,7 +571,7 @@ int boot_from_mtd(struct mtd_info *mtd, u64 offset, bool do_boot)
 		if (ret)
 			return ret;
 
-		itb_size = itb_image_size((const void *)data_load_addr);
+		itb_size = fit_get_totalsize((const void *)data_load_addr);
 		if (itb_size > size) {
 			ret = mtd_read_skip_bad(mtd, offset + size,
 						itb_size - size,
@@ -932,7 +934,7 @@ static int write_ubi2_tar_image(const void *data, size_t size,
 		return ret;
 
 	/* Remove possibly existed firmware volume */
-	remove_ubi_volume(PART_FIRMWARE_NAME);
+	remove_ubi_volume(PART_FIT_NAME);
 
 	if (!IS_ENABLED(CONFIG_MTK_DUAL_BOOT)) {
 		/* Remove this volume first in case of no enough PEBs */
@@ -975,7 +977,7 @@ static int write_ubi_itb_image(const void *data, size_t size,
 		else
 			rootfs_data_part = dual_boot_slots[slot].rootfs_data;
 	} else {
-		firmware_part = PART_FIRMWARE_NAME;
+		firmware_part = PART_FIT_NAME;
 		rootfs_data_part = PART_ROOTFS_DATA_NAME;
 	}
 
@@ -1290,11 +1292,11 @@ static int boot_from_ubi(struct mtd_info *mtd, bool do_boot)
 		return ret;
 
 	if (strcmp(CONFIG_MTK_DEFAULT_FIT_BOOT_CONF, "")) {
-		volname_primary = PART_FIRMWARE_NAME;
+		volname_primary = PART_FIT_NAME;
 		volname_secondary = PART_KERNEL_NAME;
 	} else {
 		volname_primary = PART_KERNEL_NAME;
-		volname_secondary = PART_FIRMWARE_NAME;
+		volname_secondary = PART_FIT_NAME;
 	}
 
 	ret = read_ubi_volume(volname_primary, (void *)data_load_addr, 0);
@@ -1367,7 +1369,11 @@ static int str_to_size(const char *s, u64 *retsz)
 
 static int ubi_check_reserved_volumes(bool require_attach)
 {
+#if defined(CONFIG_MTK_UBI_RESERVED_VOLUMES)
 	const char *rsvd_vols = CONFIG_MTK_UBI_RESERVED_VOLUMES;
+#else
+	const char *rsvd_vols = NULL;
+#endif
 	char *buf, *volname, *volsz, *end, *next;
 	struct ubi_volume *vol;
 	u64 volsize;
@@ -1536,9 +1542,7 @@ int mtd_upgrade_image(const void *data, size_t size)
 	struct owrt_image_info ii;
 	struct mtd_info *mtd;
 	int ret;
-#ifdef CONFIG_MEDIATEK_MULTI_MTD_LAYOUT
 	const char *ubi_flash_part = PART_UBI_NAME;
-#endif
 #endif
 
 #ifdef CONFIG_CMD_UBI
@@ -1606,14 +1610,14 @@ int mtd_upgrade_image(const void *data, size_t size)
 #endif
 				return write_ubi2_tar_image(data, size, mtd);
 			}
-			if (!ret && ii.type == IMAGE_ITB)
+			if (ii.header_type == HEADER_FIT)
 				return write_ubi_itb_image(data, size, mtd);
 		}
 	}
 #endif /* CONFIG_CMD_UBI */
 
 #ifndef CONFIG_MTK_DUAL_BOOT
-	mtd = get_mtd_device_nm(PART_FIRMWARE_NAME);
+	mtd = get_mtd_device_nm(PART_FIT_NAME);
 	if (!IS_ERR_OR_NULL(mtd)) {
 		put_mtd_device(mtd);
 
@@ -1634,9 +1638,7 @@ int mtd_boot_image(bool do_boot)
 {
 #if defined(CONFIG_CMD_UBI) || !defined(CONFIG_MTK_DUAL_BOOT)
 	struct mtd_info *mtd;
-#ifdef CONFIG_MEDIATEK_MULTI_MTD_LAYOUT
 	const char *ubi_boot_part = PART_UBI_NAME;
-#endif
 #endif
 
 #ifdef CONFIG_CMD_UBI
@@ -1683,7 +1685,7 @@ int mtd_boot_image(bool do_boot)
 #endif /* CONFIG_CMD_UBI */
 
 #ifndef CONFIG_MTK_DUAL_BOOT
-	mtd = get_mtd_device_nm(PART_FIRMWARE_NAME);
+	mtd = get_mtd_device_nm(PART_FIT_NAME);
 	if (!IS_ERR_OR_NULL(mtd)) {
 		put_mtd_device(mtd);
 
